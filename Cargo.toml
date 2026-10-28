@@ -8,6 +8,8 @@ publish = false
 [features]
 # Headless exposition and event-log tests; does not launch XGPUI Lab.
 test-support = ["gpui-luma/test-support"]
+# Downloadable archives omit the sibling source-worker toolchains.
+portable-app = []
 
 [dependencies]
 libc = "0.2"

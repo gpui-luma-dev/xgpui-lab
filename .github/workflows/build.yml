@@ -1,0 +1,109 @@
+name: Build XGPUI Lab Windows Apps
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-app-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+            artifact_name: xgpui-lab-windows-x64
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            artifact_name: xgpui-lab-windows-arm64
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: app
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '2'
+      PYTHONUTF8: '1'
+      RUSTFLAGS: '-C target-feature=+crt-static'
+    steps:
+      - name: Check out app
+        uses: actions/checkout@v5
+        with:
+          path: app
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Prepare pinned source dependencies
+        id: dependencies
+        uses: ./app/.github/actions/prepare-dependencies
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Locate Windows SDK shader compiler
+        run: |
+          $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
+          $fxc = Get-ChildItem "${env:ProgramFiles(x86)}/Windows Kits/10/bin/*/$arch/fxc.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $fxc -and $arch -eq 'arm64') {
+            # HLSL bytecode is target-independent; Windows 11 ARM64 can run the x64 SDK compiler.
+            $fxc = Get-ChildItem "${env:ProgramFiles(x86)}/Windows Kits/10/bin/*/x64/fxc.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+          }
+          if (-not $fxc) { throw 'Windows SDK fxc.exe is required for release shaders' }
+          "GPUI_FXC_PATH=$($fxc.FullName)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          Write-Output "Release shader compiler: $($fxc.FullName)"
+      - name: Set up Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app -> target
+          key: windows-app-${{ matrix.target }}-${{ steps.dependencies.outputs.cache-key }}
+      - name: Record build environment
+        run: |
+          New-Item -ItemType Directory -Force artifacts/build | Out-Null
+          git rev-parse HEAD | Tee-Object artifacts/build/environment.log
+          git -C ../xgpui rev-parse HEAD | Tee-Object -Append artifacts/build/environment.log
+          git -C ../gpui-luma rev-parse HEAD | Tee-Object -Append artifacts/build/environment.log
+          rustc -Vv | Tee-Object -Append artifacts/build/environment.log
+          cargo -V | Tee-Object -Append artifacts/build/environment.log
+      - name: Test packaging helpers
+        run: python -m unittest discover -s .github/scripts -p 'test_*.py' -v
+      - name: Build portable app
+        run: |
+          cargo build --locked --release --package xgpui-lab --features portable-app --target ${{ matrix.target }} 2>&1 | Tee-Object artifacts/build/build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Inspect runtime dependencies
+        run: ./.github/scripts/windows-runtime.ps1 -Executable "target/${{ matrix.target }}/release/xgpui-lab.exe" -OutputDirectory artifacts/build
+      - name: Package and test extracted executable
+        run: python .github/scripts/package_windows.py --target ${{ matrix.target }} --smoke
+      - name: Verify lockfile
+        run: git diff --exit-code -- Cargo.lock
+      - name: Upload Windows app archive
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.artifact_name }}-${{ github.sha }}
+          path: |
+            app/dist/${{ matrix.artifact_name }}.zip
+            app/dist/${{ matrix.artifact_name }}.zip.sha256
+            app/dist/${{ matrix.artifact_name }}-build-info.json
+            app/dist/${{ matrix.artifact_name }}-smoke.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload build diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: build-diagnostics-${{ matrix.target }}-${{ github.run_attempt }}
+          path: app/artifacts/build/
+          if-no-files-found: warn
+          retention-days: 7

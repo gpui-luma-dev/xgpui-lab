@@ -102,6 +102,8 @@ jobs:
         run: python .github/scripts/check.py clippy
       - name: Run headless tests
         run: python .github/scripts/check.py test
+      - name: Test portable app capability gating
+        run: python .github/scripts/check.py portable
       - name: Verify Cargo.lock was not modified
         run: git diff --exit-code -- Cargo.lock
       - name: Upload CI diagnostics

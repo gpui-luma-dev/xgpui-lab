@@ -24,6 +24,7 @@ rustc-ice-*.txt
 #.idea/
 
 /artifacts/
+/dist/
 
 # Python CI helper bytecode
 __pycache__/
