@@ -1,0 +1,10 @@
+edition = "2021"
+reorder_imports = false
+reorder_modules = false
+
+max_width = 120
+chain_width = 100
+fn_call_width = 100
+struct_lit_width = 100
+struct_variant_width = 100
+array_width = 100
