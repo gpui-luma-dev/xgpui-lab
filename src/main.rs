@@ -28,6 +28,22 @@ fn quit(_: &Quit, cx: &mut App) {
 }
 
 fn main() {
+    // This path also verifies that a packaged Windows executable can load without
+    // opening a GPU window or accessing a build machine's source directories.
+    if std::env::args().any(|arg| arg == "--version") {
+        println!(
+            "XGPUI Lab {} ({}-{}, {})",
+            env!("CARGO_PKG_VERSION"),
+            std::env::consts::ARCH,
+            std::env::consts::OS,
+            if cfg!(feature = "portable-app") {
+                "portable"
+            } else {
+                "source"
+            }
+        );
+        return;
+    }
     if let Some(backend) =
         std::env::args().find_map(|arg| arg.strip_prefix("--native-text-backend=").map(str::to_owned))
     {

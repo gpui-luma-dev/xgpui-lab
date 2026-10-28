@@ -11,6 +11,7 @@ COMMANDS = {
     "compile": ["cargo", "check", "--locked", "--all-targets", "--features", "test-support"],
     "clippy": ["cargo", "clippy", "--locked", "--all-targets", "--features", "test-support", "--", "-D", "warnings"],
     "test": ["cargo", "test", "--locked", "--all-targets", "--features", "test-support"],
+    "portable": ["cargo", "test", "--locked", "--all-targets", "--features", "test-support,portable-app"],
 }
 
 

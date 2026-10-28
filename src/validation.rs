@@ -13,6 +13,12 @@ use gpui::{prelude::*, *};
 use gpui_luma::{controls::button::Button, prelude::HasPresenter};
 use gpui_luma_look_radix::{self as radix, Look};
 
+const PORTABLE_VALIDATION_NOTICE: &str = "Source-worker validation is unavailable in this portable archive. Use a source checkout with sibling xgpui and gpui-luma repositories, Rust, and the cached worker dependencies. Interactive labs and their built-in CPU benchmark views remain available.";
+
+fn source_validation_available() -> bool {
+    !cfg!(feature = "portable-app")
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Suite {
     Media,
@@ -106,6 +112,7 @@ impl ValidationPage {
                         .look(look.as_ref())
                         .outline()
                         .label(label)
+                        .enabled(source_validation_available())
                         .on_click(cx, move |this: &mut Self, cx| this.start(job, cx))
                         .spawn(cx),
                 )
@@ -184,6 +191,11 @@ impl ValidationPage {
         .detach();
     }
     fn start(&mut self, job: Job, cx: &mut Context<Self>) {
+        if !source_validation_available() {
+            self.status = PORTABLE_VALIDATION_NOTICE.into();
+            cx.notify();
+            return;
+        }
         if self.busy {
             return;
         }
@@ -235,6 +247,9 @@ impl ValidationPage {
 }
 impl Render for ValidationPage {
     fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        if !source_validation_available() {
+            return div().id("portable-validation-status").size_full().p_4().child(PORTABLE_VALIDATION_NOTICE);
+        }
         if self.last_read.elapsed() > Duration::from_millis(250) {
             if let Some(output) = &self.output {
                 self.log = read_tail(&output.join("worker.log"));
@@ -487,6 +502,20 @@ fn verify_reports(output: &Path) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(all(feature = "portable-app", feature = "test-support"))]
+    #[::core::prelude::v1::test]
+    fn portable_app_does_not_start_source_workers_or_create_source_artifacts() {
+        let mut app = TestAppContext::single();
+        app.update(|cx| gpui_luma::init(cx).unwrap());
+        let (page, cx) = app.add_window_view(|_, cx| ValidationPage::new(Suite::Svg, crate::theme::default_look(), cx));
+        page.update(cx, |page, cx| {
+            page.start(Job::SvgSingle, cx);
+            assert!(!page.busy);
+            assert!(page.output.is_none());
+            assert_eq!(page.status, PORTABLE_VALIDATION_NOTICE);
+        });
+        cx.run_until_parked();
+    }
     #[::core::prelude::v1::test]
     fn worker_report_failures_are_not_presented_as_success() {
         let output = tempfile::tempdir().unwrap();

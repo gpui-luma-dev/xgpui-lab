@@ -56,8 +56,8 @@ Add `--offline` to Cargo build/test/check commands when dependencies are cached.
 The `CI` workflow runs on pull requests, pushes to `main`, and manual dispatch.
 Its stable check names are **Native (macOS)** and **Native (Windows x64)**.
 Each job checks formatting, compiles all app targets with test support, runs
-Clippy with warnings denied, and executes the headless test suite. Linux CI
-and distributable packaging are separate follow-up work.
+Clippy with warnings denied, and executes the headless test suite. Linux CI remains follow-up work; distributable Windows archives use the
+separate manual workflow documented below.
 
 CI checks out three sibling folders under the runner workspace: `app/`
 (this repository), `xgpui/`, and `gpui-luma/`. Exact dependency commits live in
@@ -69,7 +69,7 @@ in the cache identity. It does not depend on uncommitted developer edits.
 Remove the bridge when a tested upstream Luma revision supports xgpui directly.
 
 The reusable `.github/actions/prepare-dependencies` action expects the app at
-`app/` and can also be used by the future manual Windows builder (#5).
+`app/` and is also used by the manual Windows app builder.
 Python 3.13 and Git must be installed before calling it. Preparation verifies
 the exact SHAs and refuses dirty sibling trees; run it only in disposable
 checkouts, not over a working development environment. Pin updates must include
@@ -87,7 +87,8 @@ versions as seven-day workflow artifacts, including completed diagnostics on
 failed runs. It does not open native windows, run the full interactive benchmark
 suite, establish GPU/physical-P3 parity, or package/release the app. The current
 generated video source is macOS-only and reports that limitation on other platforms.
-Windows native rendering and packaging still need separate smoke testing.
+Windows native rendering still needs a separate interactive smoke test; the
+manual builder checks archive packaging and OS-loader startup.
 
 To reproduce the workflow commands from a prepared app checkout:
 
@@ -97,11 +98,55 @@ python .github/scripts/check.py format
 python .github/scripts/check.py compile
 python .github/scripts/check.py clippy
 python .github/scripts/check.py test
+python .github/scripts/check.py portable
 ```
 
 These commands save logs in `artifacts/ci/` and return the underlying Cargo
 exit status. The portable worker cancellation fixture uses the Rust test
 executable itself instead of `/bin/sleep`.
+
+## Manual Windows app builds
+
+The **Build XGPUI Lab Windows Apps** workflow (`.github/workflows/build.yml`)
+is manually triggered only. In GitHub **Actions**, select this workflow, choose
+**Run workflow**, select the desired branch/ref, and run it. It builds native
+Windows x64 and ARM64 release executables in independent jobs, using the same
+pinned sibling source setup as CI. It does not publish a GitHub Release, run
+automatically for PRs/pushes, or build macOS/Linux app archives.
+
+Download the matching `xgpui-lab-windows-x64-<commit>` or
+`xgpui-lab-windows-arm64-<commit>` Actions artifact. The download contains the app
+ZIP, a SHA-256 sidecar, build metadata, and an extracted-executable smoke report.
+Extract the app ZIP before launching `xgpui-lab.exe`. Artifacts expire after
+seven days. Archives are unsigned portable previews, not installers.
+
+Each archive includes the executable, launch instructions, app/dependency
+revision and toolchain information, the DLL import report, executable checksum,
+and source/font license notices. Release builds use static CRT linkage; packaging
+rejects unexpected VC runtime DLL imports or unresolved non-system imports
+instead of silently producing an incomplete archive. Windows system libraries
+are not redistributed. The release shader compiler comes from the runner's
+Windows SDK, with an explicit path for native ARM64 builds.
+
+The builder verifies PE architecture and runs the extracted app's `--version`
+entry point in a temporary directory outside the checkout. That proves OS-loader
+startup and selected architecture; it does **not** verify a visible window,
+GPU rendering, physical P3 output, or input behavior. A Windows desktop with
+supported Direct3D graphics/current drivers still needs a manual GUI smoke test.
+ARM64 artifacts are built and loader-tested on the native Windows ARM64 runner,
+not inferred from an x64 cross-compilation.
+
+Archives use the `portable-app` feature: source-worker **Validation** pages show
+an explicit unavailable notice, and source validation actions cannot start.
+The source worker executables, Rust/Cargo toolchain, sibling source trees, and
+external SVG corpus are not bundled. Interactive labs, built-in CPU benchmark
+views, and separate text-atlas windows remain available. The current generated
+video source is macOS-only; Windows P3 behavior depends on backend/display
+negotiation and must be read from the app's presentation status.
+
+The ordinary source build retains source validation. CI tests both source and
+portable configurations. Signing, installers, automatic updates, full worker
+bundling, and macOS/Linux packaging remain separate future work.
 
 ## Source attribution
 
