@@ -3,6 +3,7 @@ use xgpui_shader::{painted, Paint, WindowPaintExt, WindowShaderExt};
 
 impl Render for ShaderPage {
     fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_choices(_cx);
         if self.requires_sdr() && window.color_status().effective() != gpui::WindowColorMode::Default {
             return div().p_4().child("Preparing SDR presentation for captured effects…").into_any_element();
         }
@@ -102,17 +103,31 @@ impl Render for ShaderPage {
             .gap_4()
             .text_color(self.look.chrome().body_text)
             .child(
-                div().flex().flex_wrap().gap_2().children(
-                    self.buttons
-                        .iter()
-                        .filter(|(action, _)| {
-                            actions.contains(action)
-                                && !(self.active_tab == "Instancing"
-                                    && ((*action == Action::Count && self.mode != 1)
-                                        || (*action == Action::Clip && self.mode != 2)))
-                        })
-                        .map(|(_, button)| button.clone()),
-                ),
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap_2()
+                    .children(
+                        self.buttons
+                            .iter()
+                            .filter(|(action, _)| {
+                                actions.contains(action)
+                                    && !(self.active_tab == "Instancing"
+                                        && ((*action == Action::Count && self.mode != 1)
+                                            || (*action == Action::Clip && self.mode != 2)))
+                            })
+                            .map(|(_, button)| button.clone()),
+                    )
+                    .children(
+                        self.choices
+                            .iter()
+                            .filter(|(action, _)| {
+                                actions.contains(action)
+                                    && !(*action == Action::Count && self.active_tab == "Instancing" && self.mode != 1)
+                            })
+                            .map(|(_, choice)| choice.clone()),
+                    ),
             )
             .child(self.status())
             .child(

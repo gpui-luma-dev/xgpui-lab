@@ -4,6 +4,7 @@ mod video_source;
 mod views;
 mod advanced;
 mod tiled;
+pub(crate) mod benchmarks;
 
 use std::{sync::Arc, time::Instant};
 use gpui::{AppContext, Context, Entity, SharedString, Point, Pixels, Bounds};
@@ -108,6 +109,7 @@ pub struct MediaPage {
     video_stopped: bool,
     import_request: u64,
     buttons: Vec<(Action, Entity<Button>)>,
+    choices: Vec<(Action, crate::lab_controls::Choice)>,
     sliders: Vec<(Parameter, Slider)>,
     #[cfg(target_os = "macos")]
     video: Option<video_source::Demo>,
@@ -115,28 +117,133 @@ pub struct MediaPage {
     format: video_source::SourceFormat,
     video_paused: bool,
     tint_index: usize,
+    benchmarks: Entity<benchmarks::Benchmarks>,
+    cadence: Option<benchmarks::cadence::Run>,
 }
 
 impl MediaPage {
+    fn init_choices(&mut self, cx: &mut Context<Self>) {
+        self.choices = [Action::Blur, Action::Sample, Action::Jobs, Action::Budget, Action::Tint, Action::Format]
+            .into_iter()
+            .map(|action| {
+                let (label, options, selected) = self.choice_options(action);
+                let choice = crate::lab_controls::Choice::new(
+                    format!("media_lab-{action:?}"),
+                    label,
+                    &self.look,
+                    options,
+                    selected,
+                    cx,
+                    move |this: &mut Self, index, cx| this.select_choice(action, index, cx),
+                );
+                (action, choice)
+            })
+            .collect();
+    }
+    fn sync_choices(&self, cx: &mut gpui::App) {
+        for (action, choice) in &self.choices {
+            let (_, options, selected) = self.choice_options(*action);
+            choice.sync(options, selected, cx);
+        }
+    }
+    fn choice_options(&self, action: Action) -> (&'static str, Vec<String>, usize) {
+        match action {
+            Action::Blur => {
+                ("Blur radius", crate::lab_controls::labels(&["0 px", "4 px", "8 px", "16 px"]), self.blur_index)
+            }
+            Action::Sample => (
+                "Sample",
+                self.fixtures
+                    .as_ref()
+                    .map(|f| f.samples.iter().map(|s| s.name.clone()).collect())
+                    .unwrap_or_default(),
+                self.selected,
+            ),
+            Action::Jobs => (
+                "Job limit",
+                crate::lab_controls::labels(&["1", "2", "4"]),
+                [1, 2, 4].iter().position(|&n| n == self.job_limit).unwrap_or(1),
+            ),
+            Action::Budget => {
+                ("Byte budget", crate::lab_controls::labels(&["32 MiB", "64 MiB", "128 MiB"]), self.budget_index)
+            }
+            Action::Tint => ("Tint", crate::lab_controls::labels(&["Identity", "Warm", "Cool"]), self.tint_index),
+            Action::Format => (
+                "Video format",
+                crate::lab_controls::labels(&[
+                    "BGRA8",
+                    "NV12 full · BT.601",
+                    "NV12 video · BT.601",
+                    "NV12 full · BT.709",
+                    "NV12 video · BT.709",
+                ]),
+                {
+                    #[cfg(target_os = "macos")]
+                    {
+                        video_source::SourceFormat::ALL.iter().position(|&f| f == self.format).unwrap_or(0)
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        0
+                    }
+                },
+            ),
+            _ => unreachable!("action has no selector"),
+        }
+    }
+    fn select_choice(&mut self, action: Action, index: usize, cx: &mut Context<Self>) {
+        match action {
+            Action::Blur => {
+                self.blur_index = index;
+            }
+            Action::Sample => {
+                self.selected = index;
+                self.reload();
+            }
+            Action::Jobs => {
+                self.job_limit = [1, 2, 4][index];
+                self.reset_loader();
+            }
+            Action::Budget => {
+                self.budget_index = index;
+                self.reset_loader();
+            }
+            Action::Tint => {
+                self.tint_index = index;
+            }
+            Action::Format => {
+                #[cfg(target_os = "macos")]
+                {
+                    let running = self.video.is_some();
+                    self.stop_video();
+                    self.format = video_source::SourceFormat::ALL[index];
+                    if running {
+                        match video_source::Demo::new(self.format) {
+                            Ok(video) => self.video = Some(video),
+                            Err(error) => self.error = Some(error.to_string()),
+                        }
+                    }
+                }
+            }
+            _ => unreachable!("action has no selector"),
+        }
+
+        cx.notify();
+    }
+
     pub fn new(look: Arc<Look>, cx: &mut Context<Self>) -> Self {
         let buttons = [
             (Action::Open, "Open image…"),
             (Action::Sweep, "Sweep zoom"),
             (Action::Animate, "Animate adjustments"),
-            (Action::Blur, "Next blur radius"),
             (Action::Quality, "Toggle blur quality"),
             (Action::Wide, "Toggle wide output"),
             (Action::Restart, "Restart video"),
-            (Action::Sample, "Next sample"),
             (Action::Reload, "Reload image"),
             (Action::Burst, "Burst ×12"),
-            (Action::Jobs, "Next job limit"),
-            (Action::Budget, "Next byte budget"),
             (Action::Reset, "Reset view"),
             (Action::Filters, "Reset filters"),
-            (Action::Tint, "Next tint"),
             (Action::Start, "Stop source"),
-            (Action::Format, "Next video format"),
             (Action::Pause, "Pause / Resume"),
             (Action::VideoBurst, "Burst 120 frames"),
         ]
@@ -146,7 +253,6 @@ impl MediaPage {
                 radix::Button::new(format!("media-{action:?}"))
                     .look(look.as_ref())
                     .outline()
-                    .size(radix::ButtonSize::One)
                     .label(label)
                     .on_click(cx, move |this: &mut Self, cx| this.action(action, cx))
                     .spawn(cx),
@@ -192,7 +298,8 @@ impl MediaPage {
             )
         })
         .to_vec();
-        Self {
+        let benchmarks = cx.new(|cx| benchmarks::Benchmarks::new(look.clone(), cx));
+        let mut page = Self {
             look,
             active_tab: "Images".into(),
             fixtures: None,
@@ -226,6 +333,7 @@ impl MediaPage {
             video_stopped: false,
             import_request: 0,
             buttons,
+            choices: Vec::new(),
             sliders,
             #[cfg(target_os = "macos")]
             video: None,
@@ -233,7 +341,21 @@ impl MediaPage {
             format: Default::default(),
             video_paused: false,
             tint_index: 0,
-        }
+            benchmarks,
+            cadence: None,
+        };
+        page.init_choices(cx);
+        page
+    }
+    fn reset_loader(&mut self) {
+        self.job = None;
+        self.image = None;
+        self.burst_jobs.clear();
+        self.burst_images.clear();
+        self.waiting = 0;
+        self.completed = 0;
+        self.loader = Self::loader(self.job_limit, [32, 64, 128][self.budget_index] * MIB);
+        self.reload();
     }
     fn loader(jobs: usize, bytes: usize) -> anyhow::Result<MediaLoader> {
         MediaLoader::with_upload_limits(
@@ -392,6 +514,9 @@ impl MediaPage {
     }
     fn action(&mut self, action: Action, cx: &mut Context<Self>) {
         match action {
+            Action::Blur | Action::Sample | Action::Jobs | Action::Budget | Action::Tint | Action::Format => {
+                unreachable!("selector setting")
+            }
             Action::Open => self.open_image(cx),
             Action::Sweep => {
                 self.sweep = !self.sweep;
@@ -401,40 +526,17 @@ impl MediaPage {
                 self.animate = !self.animate;
                 self.started = Instant::now();
             }
-            Action::Blur => self.blur_index = (self.blur_index + 1) % 4,
             Action::Quality => self.full_quality = !self.full_quality,
             Action::Wide => self.wide = !self.wide,
             Action::Restart => {
                 self.stop_video();
                 self.video_stopped = false;
             }
-            Action::Sample => {
-                if let Some(fixtures) = &self.fixtures {
-                    self.selected = (self.selected + 1) % fixtures.samples.len();
-                    self.reload();
-                }
-            }
             Action::Reload => {
                 self.error = None;
                 self.reload();
             }
             Action::Burst => self.waiting += 12,
-            Action::Jobs | Action::Budget => {
-                if action == Action::Jobs {
-                    self.job_limit = if self.job_limit == 4 { 1 } else { self.job_limit * 2 };
-                } else {
-                    self.budget_index = (self.budget_index + 1) % 3;
-                }
-                self.job = None;
-                self.image = None;
-                self.burst_jobs.clear();
-                self.burst_images.clear();
-                self.waiting = 0;
-                self.completed = 0;
-                self.loader = Self::loader(self.job_limit, [32, 64, 128][self.budget_index] * MIB);
-                self.reload();
-            }
-            Action::Tint => self.tint_index = (self.tint_index + 1) % 3,
             Action::Reset | Action::Filters => {
                 if action == Action::Reset {
                     self.sweep = false;
@@ -486,20 +588,6 @@ impl MediaPage {
                     }
                 }
             }
-            Action::Format => {
-                #[cfg(target_os = "macos")]
-                {
-                    let running = self.video.is_some();
-                    self.stop_video();
-                    self.format = self.format.next();
-                    if running {
-                        match video_source::Demo::new(self.format) {
-                            Ok(video) => self.video = Some(video),
-                            Err(error) => self.error = Some(error.to_string()),
-                        }
-                    }
-                }
-            }
             Action::Pause => {
                 self.video_paused = !self.video_paused;
                 #[cfg(target_os = "macos")]
@@ -531,6 +619,37 @@ impl MediaPage {
 mod tests {
     use super::{Fixtures, MediaPage, MIB};
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn selectors_pick_nonadjacent_values_and_follow_filter_reset() {
+        use super::Action;
+        let mut app = gpui::TestAppContext::single();
+        app.update(|cx| gpui_luma::init(cx).unwrap());
+        let (page, cx) = app.add_window_view(|_, cx| MediaPage::new(crate::theme::default_look(), cx));
+        page.update(cx, |page, cx| {
+            page.fixtures = Some(Fixtures::new(None).unwrap());
+            page.sync_choices(cx);
+        });
+        for (action, index) in
+            [(Action::Sample, 2), (Action::Jobs, 2), (Action::Budget, 2), (Action::Tint, 2), (Action::Blur, 3)]
+        {
+            let choice =
+                cx.update(|_, cx| page.read(cx).choices.iter().find(|(key, _)| *key == action).unwrap().1.clone());
+            cx.update(|_, cx| choice.select(index, cx));
+        }
+        page.update(cx, |page, cx| {
+            assert_eq!(page.selected, 2);
+            assert_eq!(page.job_limit, 4);
+            assert_eq!(page.budget_index, 2);
+            assert_eq!(page.tint_index, 2);
+            assert_eq!(page.blur_index, 3);
+            page.action(Action::Filters, cx);
+            page.sync_choices(cx);
+            let tint = &page.choices.iter().find(|(key, _)| *key == Action::Tint).unwrap().1;
+            assert_eq!(page.tint_index, 0);
+            assert_eq!(tint.selector.read(cx).selected_id().unwrap().as_ref(), "0");
+        });
+    }
 
     #[test]
     fn source_lab_fixtures_decode_with_mips_and_release_loader_reservations() {

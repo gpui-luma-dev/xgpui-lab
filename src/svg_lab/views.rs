@@ -5,6 +5,7 @@ use crate::theme::ColorVizLookExt;
 
 impl Render for SvgPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_choices(cx);
         self.density = window.scale_factor();
         self.motion_allowed = !cx.reduce_motion();
         self.gallery_columns = ((f32::from(window.viewport_size().width) - 140.) / 232.).floor().max(1.) as usize;
@@ -77,19 +78,30 @@ impl Render for SvgPage {
             .gap_4()
             .text_color(self.look.chrome().body_text)
             .child(
-                div().flex().flex_wrap().gap_2().children(
-                    self.buttons
-                        .iter()
-                        .filter(|(action, _)| {
-                            actions.contains(action)
-                                && !(matches!(action, Action::Clip | Action::Shadow)
-                                    && self.asset.as_ref().is_ok_and(|asset| asset.source.is_some()))
-                        })
-                        .map(|(action, button)| {
-                            let id = format!("svg-action-{action:?}");
-                            div().id(id.clone()).debug_selector(move || id.clone()).child(button.clone())
-                        }),
-                ),
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap_2()
+                    .children(
+                        self.buttons
+                            .iter()
+                            .filter(|(action, _)| {
+                                actions.contains(action)
+                                    && !(matches!(action, Action::Clip | Action::Shadow)
+                                        && self.asset.as_ref().is_ok_and(|asset| asset.source.is_some()))
+                            })
+                            .map(|(action, button)| {
+                                let id = format!("svg-action-{action:?}");
+                                div().id(id.clone()).debug_selector(move || id.clone()).child(button.clone())
+                            }),
+                    )
+                    .children(
+                        self.choices
+                            .iter()
+                            .filter(|(action, _)| actions.contains(action))
+                            .map(|(_, choice)| choice.clone()),
+                    ),
             )
             .child(div().flex().flex_wrap().gap_4().children(
                 self.sliders.iter().filter(|(parameter, _)| parameters.contains(parameter)).map(

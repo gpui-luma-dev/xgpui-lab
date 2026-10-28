@@ -5,10 +5,13 @@ The application name and local dependency configuration have been adapted
 for xgpui-lab. The original color screens are retained.
 
 Gamut lab content is adapted from xgpui/apps/gamut-lab/src/main.rs,
-xgpui/apps/gamut-lab/src/color_main.rs, and the shared CPU references in
+xgpui/apps/gamut-lab/src/color_main.rs, xgpui/apps/gamut-lab/src/checks.rs,
+and the shared CPU references in
 xgpui/apps/extensions-web/src/color_samples.rs at commit
 73262f80be7e2b9bb8fa5cdc333f1bb3e7421b9e (Apache-2.0).
 The shared reference import and application controls were adapted for this app.
+Gamut benchmarks draw and capture the embedded Luma lab directly; the source
+checks.rs capture loop was adapted with per-frame timings and JSON reports.
 Copyright 2022 - 2025 Zed Industries, Inc.
 
 Shader content is adapted from xgpui/apps/paint-lab/src/editor.rs,
@@ -25,18 +28,21 @@ mapping and CPU-gradient examples at commit
 Controls are adapted to Luma; all Color preview swatches are explicitly sRGB.
 
 Media fixtures and the generated BGRA/NV12 source are adapted from
-xgpui/apps/media-lab/src/{fixtures,video_lab,model,ui}.rs.
+xgpui/apps/media-lab/src/{fixtures,video_lab,model,ui}.rs. Embedded Media
+benchmarks also adapt src/{upload_bench,ui_perf,scroll_perf,headless,video_lab}.rs,
+using the application media pipeline and generated fixtures with in-process
+background work and temporary native measurement windows.
 SVG scene geometry and rendering comparisons are adapted from
 xgpui/apps/svg-lab/src/{scene,main,gallery,benchmark}.rs; path-effect fixtures
 and panels are adapted from xgpui/apps/media-lab/src/paths.rs.
 Source revision: 73262f80be7e2b9bb8fa5cdc333f1bb3e7421b9e (Apache-2.0).
 Application navigation and controls are adapted to Luma. The embedded gallery
-uses the original ribbon/leaf scene, without the third-party artwork corpus.
+uses the original ribbon/leaf scene, with a redistributable benchmark subset in assets/samples/svg.
 
 Restored Media modes also adapt media-lab/src/float_lab.rs and the shared
 apps/web-support/tiled_demo.rs. SVG camera gestures adapt svg-lab/src/camera.rs
 at the same source revision and license. External gallery artwork is loaded
-from user-selected files; no additional artwork corpus is distributed.
+from user-selected files; optional user artwork can also be loaded.
 
 Parley pages adapt xgpui/apps/text-lab/src/{samples,timings,paragraph}.rs
 and paragraph/input.rs at revision 73262f80be7e2b9bb8fa5cdc333f1bb3e7421b9e
@@ -56,5 +62,16 @@ paint-lab/src/{brushes,hermite_editor,mesh_tangent}.rs; shadow and border
 comparisons adapt shader-examples/src/shadows.rs. Native text diagnostics
 and scrolling workloads adapt text-lab/src/workload.rs. Source revision:
 73262f80be7e2b9bb8fa5cdc333f1bb3e7421b9e (Apache-2.0).
-Interactive application controls are adapted to Luma. Validation launches
-the original source lab workers from the selected sibling checkout.
+Interactive application controls are adapted to Luma. All benchmark workloads
+are embedded in this application. Parley text backends and SVG corpus cases use
+fresh copies of this executable for isolation; no source application is built
+or launched at runtime.
+
+Shader checks also adapt paint-lab/src/checks.rs and
+checks/{gradient_checks,portable_checks}.rs at the same source revision.
+SVG CPU benchmark methods and the corpus metadata adapt svg-lab/src/benchmark.rs
+and bench/{run.py,corpus.json}. The redistributable subset is bundled in assets/samples/svg: AJ Ashton’s
+public-domain camera, rg1024’s CC0 grapes and metal effect, and Ebaychatter0’s
+CC-BY-SA-3.0 dragon. Attribution, source links, license links and original
+hashes are retained in src/svg_lab/corpus.json. Artwork is unmodified. Parley benchmark reports reuse the embedded text-lab
+samples, timing routines and native/Parley scrolling and glyph-atlas workloads.

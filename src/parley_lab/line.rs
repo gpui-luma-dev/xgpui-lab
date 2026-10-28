@@ -11,6 +11,7 @@ pub(super) struct LinePage {
     width: f32,
     size: f32,
     buttons: Vec<Entity<Button>>,
+    sample_choice: crate::lab_controls::Choice,
     sliders: Vec<Slider>,
     snapshot: Option<Snapshot>,
     bounds: Bounds<Pixels>,
@@ -18,30 +19,36 @@ pub(super) struct LinePage {
 }
 impl LinePage {
     pub fn new(engine: Arc<Engine>, look: Arc<Look>, cx: &mut Context<Self>) -> Self {
-        let buttons = ["Next script / break sample", "Reset layout"]
-            .into_iter()
-            .enumerate()
-            .map(|(id, label)| {
-                radix::Button::new(format!("line-{id}"))
-                    .look(look.as_ref())
-                    .outline()
-                    .label(label)
-                    .on_click(cx, move |this: &mut Self, cx| {
-                        if id == 0 {
-                            this.sample = (this.sample + 1) % paragraph::TEXTS.len();
-                        } else {
-                            this.width = 320.;
-                            this.size = 24.;
-                            for (id, slider) in this.sliders.iter().enumerate() {
-                                slider.update(cx, |slider, cx| slider.set_value(if id == 0 { 320. } else { 24. }, cx));
-                            }
-                        }
-                        this.hit = None;
-                        cx.notify();
-                    })
-                    .spawn(cx)
-            })
-            .collect();
+        let sample_choice = crate::lab_controls::Choice::new(
+            "text-line-sample",
+            "Sample",
+            &look,
+            paragraph::TEXTS.iter().map(|(label, _)| label.to_string()).collect(),
+            0,
+            cx,
+            |this: &mut Self, index, cx| {
+                this.sample = index;
+                this.hit = None;
+                this.snapshot = None;
+                cx.notify();
+            },
+        );
+        let buttons = vec![
+            radix::Button::new("line-reset")
+                .look(look.as_ref())
+                .outline()
+                .label("Reset layout")
+                .on_click(cx, |this: &mut Self, cx| {
+                    this.width = 320.;
+                    this.size = 24.;
+                    for (id, slider) in this.sliders.iter().enumerate() {
+                        slider.update(cx, |slider, cx| slider.set_value(if id == 0 { 320. } else { 24. }, cx));
+                    }
+                    this.hit = None;
+                    cx.notify();
+                })
+                .spawn(cx),
+        ];
         let sliders = [(120., 720., 320.), (12., 48., 24.)]
             .into_iter()
             .enumerate()
@@ -69,6 +76,7 @@ impl LinePage {
             width: 320.,
             size: 24.,
             buttons,
+            sample_choice,
             sliders,
             snapshot: None,
             bounds: Default::default(),
@@ -109,7 +117,7 @@ impl Render for LinePage {
         let height = layout.size().height;
         let mut root=div().id("line-layout-probe").size_full().overflow_y_scroll().p_4().flex().flex_col().gap_4()
             .child("Line layout · wrapping, hard breaks, BiDi geometry and hit testing")
-            .child(div().flex().gap_3().children(self.buttons.clone()))
+            .child(div().flex().gap_3().children(self.buttons.clone()).child(self.sample_choice.clone()))
             .child(div().flex().gap_4().children(self.sliders.iter().enumerate().map(|(id,slider)|div().w(px(240.)).flex().flex_col().gap_2().child(if id==0 {format!("Wrap width {:.0}px",self.width)}else{format!("Font size {:.0}px",self.size)}).child(slider.clone()))))
             .child(paragraph::TEXTS[self.sample].0)
             .child(format!("{} visual baseline rows · {:.1}px height · {} resolved runs",rows.len(),f32::from(height),layout.runs().len()))

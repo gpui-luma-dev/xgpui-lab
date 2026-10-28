@@ -7,6 +7,7 @@ mod mesh;
 mod hermite;
 mod mesh_tangent;
 mod shadows;
+pub(crate) mod benchmarks;
 
 use std::{sync::Arc, time::Instant};
 use gpui::{prelude::*, *};
@@ -155,6 +156,7 @@ pub struct ShaderPage {
     mesh_pane: Entity<mesh::MeshPane>,
     shadow_pane: Entity<shadows::ShadowPane>,
     gallery_buttons: Vec<(&'static str, Entity<Button>)>,
+    gallery_choices: Vec<(&'static str, crate::lab_controls::Choice)>,
     gallery_labels: std::cell::RefCell<std::collections::HashMap<&'static str, String>>,
     freeform_step: u8,
     backdrop_changed: bool,
@@ -172,6 +174,7 @@ pub struct ShaderPage {
     selected_point: usize,
     programs: anyhow::Result<Programs>,
     buttons: Vec<(Action, Entity<Button>)>,
+    choices: Vec<(Action, crate::lab_controls::Choice)>,
     sliders: Vec<(Parameter, Slider)>,
     animated: bool,
     time: f32,
@@ -188,27 +191,88 @@ pub struct ShaderPage {
 impl ShaderPage {
     const EFFECTS: [Effect; 4] = [Effect::Linear, Effect::Radial, Effect::Conic, Effect::Diamond];
 
+    fn init_choices(&mut self, cx: &mut Context<Self>) {
+        self.choices = [Action::Effect, Action::Stop, Action::Point, Action::Mode, Action::Count]
+            .into_iter()
+            .map(|action| {
+                let (label, options, selected) = self.choice_options(action);
+                let choice = crate::lab_controls::Choice::new(
+                    format!("shader-{action:?}"),
+                    label,
+                    &self.look,
+                    options,
+                    selected,
+                    cx,
+                    move |this: &mut Self, index, cx| this.select_choice(action, index, cx),
+                );
+                (action, choice)
+            })
+            .collect();
+    }
+    fn sync_choices(&self, cx: &mut gpui::App) {
+        for (action, choice) in &self.choices {
+            let (_, options, selected) = self.choice_options(*action);
+            choice.sync(options, selected, cx);
+        }
+    }
+    fn choice_options(&self, action: Action) -> (&'static str, Vec<String>, usize) {
+        match action {
+            Action::Effect => {
+                ("Gradient type", Self::EFFECTS.iter().map(|e| e.label().to_string()).collect(), self.effect_index)
+            }
+            Action::Stop => (
+                "Selected stop",
+                (0..self.settings[self.effect_index].stops.len()).map(|i| format!("Stop {}", i + 1)).collect(),
+                self.settings[self.effect_index].selected,
+            ),
+            Action::Point => ("Mesh point", (1..=9).map(|i| format!("Point {i}")).collect(), self.selected_point),
+            Action::Mode => ("Example", crate::lab_controls::labels(&["Glow", "Particles", "Rounded"]), self.mode),
+            Action::Count => {
+                ("Workload", crate::lab_controls::labels(&["100", "1000", "5000", "10000"]), self.count_index)
+            }
+            _ => unreachable!("action has no selector"),
+        }
+    }
+    fn select_choice(&mut self, action: Action, index: usize, cx: &mut Context<Self>) {
+        match action {
+            Action::Effect => {
+                self.freeze();
+                self.effect_index = index;
+            }
+            Action::Stop => {
+                self.freeze();
+                self.settings[self.effect_index].selected = index;
+            }
+            Action::Point => {
+                self.selected_point = index;
+            }
+            Action::Mode => {
+                self.mode = index;
+            }
+            Action::Count => {
+                self.count_index = index;
+            }
+            _ => unreachable!("action has no selector"),
+        }
+        self.sync_sliders(cx);
+        cx.notify();
+    }
+
     pub fn new(look: Arc<Look>, cx: &mut Context<Self>) -> Self {
         let buttons = [
-            (Action::Effect, "Next gradient type"),
-            (Action::Stop, "Next stop"),
             (Action::Add, "Add stop"),
             (Action::Duplicate, "Duplicate stop"),
             (Action::Remove, "Remove stop"),
-            (Action::Point, "Next mesh point"),
             (Action::Reset, "Reset"),
             (Action::Animate, "Animate / Pause"),
             (Action::Opacity, "Toggle opacity"),
             (Action::Clip, "Toggle clipping"),
             (Action::Native, "Toggle native coverage"),
-            (Action::Mode, "Next example"),
-            (Action::Count, "Next workload"),
         ]
         .map(|(action, label)| {
             let button = radix::Button::new(format!("shader-{action:?}"))
                 .look(look.as_ref())
                 .outline()
-                .size(radix::ButtonSize::One)
                 .label(label)
                 .on_click(cx, move |this: &mut Self, cx| this.action(action, cx))
                 .spawn(cx);
@@ -250,13 +314,9 @@ impl ShaderPage {
         .to_vec();
         let typography = cx.new(|cx| typography::TypographyDemo::new(look.clone(), cx));
         let gallery_buttons = [
-            ("freeform-points", "Freeform points"),
             ("backdrop-source", "Swap stripe colors"),
             ("backdrop-foreground", "Move marker"),
             ("backdrop-toggle", "Toggle blur"),
-            ("layer-filter-cycle", "Next filter"),
-            ("layer-blend-cycle", "Next blend"),
-            ("layer-blur-cycle", "Next blur radius"),
             ("layer-blur-quality", "Toggle blur quality"),
             ("path-route", "Toggle direct / native"),
         ]
@@ -268,13 +328,10 @@ impl ShaderPage {
                 .label(label)
                 .on_click(cx, move |this: &mut Self, cx| {
                     match id {
-                        "freeform-points" => this.freeform_step = (this.freeform_step + 1) % 3,
                         "backdrop-source" => this.backdrop_changed = !this.backdrop_changed,
                         "backdrop-foreground" => this.backdrop_moved = !this.backdrop_moved,
                         "backdrop-toggle" => this.backdrop_disabled = !this.backdrop_disabled,
-                        "layer-filter-cycle" => this.layer_filter_step = (this.layer_filter_step + 1) % 3,
-                        "layer-blend-cycle" => this.layer_blend_step = (this.layer_blend_step + 1) % 7,
-                        "layer-blur-cycle" => this.layer_blur_step = (this.layer_blur_step + 1) % 4,
+
                         "layer-blur-quality" => this.layer_blur_full_resolution = !this.layer_blur_full_resolution,
                         _ => this.direct_paths = !this.direct_paths,
                     }
@@ -284,12 +341,83 @@ impl ShaderPage {
             (id, button)
         })
         .collect();
+        let gallery_choices = vec![
+            (
+                "freeform-points",
+                crate::lab_controls::Choice::new(
+                    "gallery-freeform-points",
+                    "Freeform points",
+                    &look,
+                    crate::lab_controls::labels(&["4", "8", "16"]),
+                    0,
+                    cx,
+                    |this: &mut Self, index, cx| {
+                        this.freeform_step = index as _;
+                        cx.notify();
+                    },
+                ),
+            ),
+            (
+                "layer-filter-cycle",
+                crate::lab_controls::Choice::new(
+                    "gallery-layer-filter-cycle",
+                    "Filter",
+                    &look,
+                    crate::lab_controls::labels(&["Invert 100%", "Invert 50%", "Saturation 2"]),
+                    0,
+                    cx,
+                    |this: &mut Self, index, cx| {
+                        this.layer_filter_step = index as _;
+                        cx.notify();
+                    },
+                ),
+            ),
+            (
+                "layer-blend-cycle",
+                crate::lab_controls::Choice::new(
+                    "gallery-layer-blend-cycle",
+                    "Blend",
+                    &look,
+                    crate::lab_controls::labels(&[
+                        "Normal",
+                        "Multiply",
+                        "Screen",
+                        "Overlay",
+                        "Color dodge",
+                        "Soft light",
+                        "Linear burn",
+                    ]),
+                    0,
+                    cx,
+                    |this: &mut Self, index, cx| {
+                        this.layer_blend_step = index as _;
+                        cx.notify();
+                    },
+                ),
+            ),
+            (
+                "layer-blur-cycle",
+                crate::lab_controls::Choice::new(
+                    "gallery-layer-blur-cycle",
+                    "Subtree blur",
+                    &look,
+                    crate::lab_controls::labels(&["0 px", "4 px", "8 px", "16 px"]),
+                    0,
+                    cx,
+                    |this: &mut Self, index, cx| {
+                        this.layer_blur_step = index as _;
+                        cx.notify();
+                    },
+                ),
+            ),
+        ];
         let mesh_pane = cx.new(|cx| mesh::MeshPane::new(look.clone(), cx));
         let shadow_pane = cx.new(|cx| shadows::ShadowPane::new(look.clone(), cx));
         let mut page = Self {
             mesh_pane,
             shadow_pane,
             gallery_buttons,
+            gallery_choices,
             gallery_labels: Default::default(),
             freeform_step: 0,
             backdrop_changed: false,
@@ -309,6 +437,7 @@ impl ShaderPage {
             selected_point: 0,
             programs: Programs::new(),
             buttons,
+            choices: Vec::new(),
             sliders,
             animated: false,
             time: 0.,
@@ -321,6 +450,7 @@ impl ShaderPage {
             progress: 0.,
             shader_alpha: 1.,
         };
+        page.init_choices(cx);
         page.sync_sliders(cx);
         page
     }
@@ -347,7 +477,10 @@ impl ShaderPage {
         self.shadow_pane.update(cx, |page, _| page.animated = false);
     }
 
-    fn gallery_button(&self, id: &'static str, label: impl Into<String>, cx: &mut Context<Self>) -> Entity<Button> {
+    fn gallery_button(&self, id: &'static str, label: impl Into<String>, cx: &mut Context<Self>) -> gpui::AnyElement {
+        if let Some((_, choice)) = self.gallery_choices.iter().find(|(key, _)| *key == id) {
+            return choice.clone().into_any_element();
+        }
         let button = self.gallery_buttons.iter().find(|(key, _)| *key == id).unwrap().1.clone();
         let label = label.into();
         let changed = self.gallery_labels.borrow().get(id) != Some(&label);
@@ -355,7 +488,7 @@ impl ShaderPage {
             self.gallery_labels.borrow_mut().insert(id, label.clone());
             button.update(cx, |button, cx| button.set_label(label, cx));
         }
-        button
+        button.into_any_element()
     }
     fn value(&self, parameter: Parameter) -> f32 {
         let s = &self.settings[self.effect_index];
@@ -399,6 +532,9 @@ impl ShaderPage {
 
     fn action(&mut self, action: Action, cx: &mut Context<Self>) {
         match action {
+            Action::Effect | Action::Stop | Action::Point | Action::Mode | Action::Count => {
+                unreachable!("selector setting")
+            }
             Action::Animate => {
                 self.animated = !self.animated;
                 self.last_frame = Instant::now();
@@ -406,15 +542,10 @@ impl ShaderPage {
             Action::Opacity => self.half_opacity = !self.half_opacity,
             Action::Clip => self.clipped = !self.clipped,
             Action::Native => self.native = !self.native,
-            Action::Mode => self.mode = (self.mode + 1) % 3,
-            Action::Count => self.count_index = (self.count_index + 1) % 4,
-            Action::Point => self.selected_point = (self.selected_point + 1) % 9,
             _ => {
                 self.freeze();
                 let s = &mut self.settings[self.effect_index];
                 match action {
-                    Action::Effect => self.effect_index = (self.effect_index + 1) % 4,
-                    Action::Stop => s.selected = (s.selected + 1) % s.stops.len(),
                     Action::Add => s.add(),
                     Action::Duplicate => s.duplicate(),
                     Action::Remove => s.remove(),
@@ -492,6 +623,39 @@ mod tests {
     use gpui_luma::controls::button::ButtonEvent;
 
     #[test]
+    fn stop_selector_tracks_edits_and_retains_each_gradient_selection() {
+        let mut app = gpui::TestAppContext::single();
+        app.update(|cx| gpui_luma::init(cx).unwrap());
+        let (page, cx) = app.add_window_view(|_, cx| ShaderPage::new(crate::theme::default_look(), cx));
+        let choose = |action, index, cx: &mut gpui::VisualTestContext| {
+            let choice =
+                cx.update(|_, cx| page.read(cx).choices.iter().find(|(key, _)| *key == action).unwrap().1.clone());
+            cx.update(|_, cx| choice.select(index, cx));
+            cx.run_until_parked();
+        };
+        choose(Action::Effect, 3, cx);
+        page.update(cx, |page, cx| {
+            page.action(Action::Add, cx);
+            page.action(Action::Add, cx);
+            page.sync_choices(cx);
+        });
+        let last = cx.update(|_, cx| page.read(cx).settings[3].stops.len() - 1);
+        choose(Action::Stop, last, cx);
+        page.update(cx, |page, cx| {
+            assert_eq!(page.settings[3].selected, last);
+            page.action(Action::Remove, cx);
+            page.sync_choices(cx);
+            let selected = page.settings[3].selected;
+            let choice = &page.choices.iter().find(|(key, _)| *key == Action::Stop).unwrap().1;
+            assert_eq!(choice.selector.read(cx).selected_id().unwrap().as_ref(), selected.to_string());
+            assert_eq!(selected, last - 1);
+        });
+        choose(Action::Effect, 0, cx);
+        choose(Action::Effect, 3, cx);
+        cx.update(|_, cx| assert_eq!(page.read(cx).settings[3].selected, last - 1));
+    }
+
+    #[test]
     fn shader_tabs_render_and_luma_controls_edit_retained_lab_state() {
         let mut app = TestAppContext::single();
         app.update(|cx| gpui_luma::init(cx).expect("initialize SDK"));
@@ -517,11 +681,11 @@ mod tests {
         let (next_point, x_slider) = cx.update(|_, cx| {
             let page = page.read(cx);
             (
-                page.buttons.iter().find(|(action, _)| *action == Action::Point).unwrap().1.clone(),
+                page.choices.iter().find(|(action, _)| *action == Action::Point).unwrap().1.clone(),
                 page.sliders.iter().find(|(parameter, _)| *parameter == Parameter::X).unwrap().1.clone(),
             )
         });
-        next_point.update(cx, |_, cx| cx.emit(ButtonEvent::Click));
+        cx.update(|_, cx| next_point.select(1, cx));
         cx.run_until_parked();
         x_slider.update(cx, |slider, cx| {
             slider.set_thumb_position(slider.primary_thumb_id(), 0.6, cx);

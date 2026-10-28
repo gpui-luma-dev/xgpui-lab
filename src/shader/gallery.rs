@@ -82,11 +82,7 @@ pub fn gallery(lab: &super::ShaderPage, cx: &mut Context<super::ShaderPage>) -> 
                 .child(label)
         })))
         .child("Spatial brushes · backgrounds, borders, and glyphs")
-        .child(lab.gallery_button(
-            "freeform-points",
-            format!("Larger freeform: {point_count} points · click to cycle"),
-            cx,
-        ))
+        .child(lab.gallery_button("freeform-points", format!("Larger freeform: {point_count} points"), cx))
         .child(div().flex().flex_wrap().gap_4().children(spatial.into_iter().map(|(label, brush)| {
             div()
                 .flex()
@@ -302,9 +298,9 @@ fn group_filter_demo(lab: &super::ShaderPage, cx: &mut Context<super::ShaderPage
     };
 
     let (label, effect) = match lab.layer_filter_step {
-        0 => ("Invert 100% · click to cycle", LayerEffect::invert(1.).unwrap()),
-        1 => ("Invert 50% · click to cycle", LayerEffect::invert(0.5).unwrap()),
-        _ => ("Saturation 2 · click to cycle", LayerEffect::saturation(2.).unwrap()),
+        0 => ("Invert 100%", LayerEffect::invert(1.).unwrap()),
+        1 => ("Invert 50%", LayerEffect::invert(0.5).unwrap()),
+        _ => ("Saturation 2", LayerEffect::saturation(2.).unwrap()),
     };
     let sample = |continuous_background: bool| {
         div()
@@ -533,9 +529,7 @@ fn blue_noise_demo() -> impl IntoElement {
                     canvas(
                         |_, _, _| (),
                         move |bounds, (), window, _| {
-                            let ranks = include_bytes!(
-                                "../../../xgpui/extensions/xgpui-ext/crates/xgpui-shader/src/brush/blue_noise.bin"
-                            );
+                            let ranks = include_bytes!("../../assets/samples/shader/blue_noise.bin");
                             for (i, rank) in ranks.iter().enumerate() {
                                 let value = if threshold {
                                     if *rank < 128 { 0 } else { 255 }

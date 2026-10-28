@@ -2361,6 +2361,7 @@ dependencies = [
  "gpui-linux",
  "gpui-macos",
  "gpui-web",
+ "gpui-wgpu",
  "gpui-windows",
 ]
 
@@ -2421,6 +2422,7 @@ dependencies = [
  "etagere",
  "gpui",
  "gpui-util",
+ "image",
  "itertools",
  "log",
  "parking_lot",
@@ -7085,7 +7087,9 @@ dependencies = [
  "lucide-static-svg",
  "palette",
  "parley",
+ "serde",
  "serde_json",
+ "sha2",
  "skrifa 0.44.0",
  "smallvec",
  "sysinfo",

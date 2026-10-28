@@ -1,0 +1,50 @@
+[
+  {
+    "id": "AJ_Digital_Camera",
+    "url": "https://dev.w3.org/SVG/tools/svgweb/samples/svg-files/AJ_Digital_Camera.svg",
+    "coverage": "product illustration",
+    "license": "Public-domain dedication (embedded RDF); Openclipart public-domain collection",
+    "sha256": "e8efd9d45b027782d1b7cd57830c29c27850ea067c2c141ff4be9d2e5a1c314e",
+    "bundled": true,
+    "author": "AJ Ashton",
+    "license_url": "http://web.resource.org/cc/PublicDomain",
+    "attribution_source": "https://openclipart.org/share",
+    "local": "assets/samples/svg/AJ_Digital_Camera.svg"
+  },
+  {
+    "id": "rg1024_green_grapes",
+    "url": "https://dev.w3.org/SVG/tools/svgweb/samples/svg-files/rg1024_green_grapes.svg",
+    "coverage": "organic gradients and filters",
+    "license": "Openclipart public domain / CC0-1.0",
+    "sha256": "c5982a7b24fc10bd8212f03f15f4d368d1022ae9ef15996fa98cfca3dfa0c011",
+    "bundled": true,
+    "author": "rg1024",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "attribution_source": "https://openclipart.org/detail/20104/green-grapes",
+    "local": "assets/samples/svg/rg1024_green_grapes.svg"
+  },
+  {
+    "id": "rg1024_metal_effect",
+    "url": "https://dev.w3.org/SVG/tools/svgweb/samples/svg-files/rg1024_metal_effect.svg",
+    "coverage": "metallic gradients and filters",
+    "license": "Openclipart public domain / CC0-1.0",
+    "sha256": "bea3712e842b247bfab90ab373355fffe3be933f8a33df55ea193036e0812983",
+    "bundled": true,
+    "author": "rg1024",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "attribution_source": "https://openclipart.org/detail/20070/metal-effect",
+    "local": "assets/samples/svg/rg1024_metal_effect.svg"
+  },
+  {
+    "id": "dragon",
+    "local": "assets/samples/svg/dragon.svg",
+    "url": "https://commons.wikimedia.org/wiki/File:Dragon_clip_art.svg",
+    "coverage": "Inkscape illustration already bundled with GPUI",
+    "license": "CC-BY-SA-3.0",
+    "sha256": "a66278ec0c72d70152ab05fc9dd122ad094a262d96fa6f61fba6b12e128e0e47",
+    "bundled": true,
+    "author": "Ebaychatter0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
+    "attribution_source": "https://commons.wikimedia.org/wiki/File:Dragon_clip_art.svg"
+  }
+]

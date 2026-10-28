@@ -359,6 +359,8 @@ impl Render for GradientBuilder {
                     .child(preview_surface)
                     .child(
                         div()
+                            .id("point-visibility-container")
+                            .debug_selector(|| "point-visibility".into())
                             .absolute()
                             .top(px(8.0))
                             .right(px(8.0))

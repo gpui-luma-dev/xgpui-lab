@@ -7,13 +7,39 @@ Initial working version of a unified native benchmark, testing, and validation a
 | Workspace | Implemented coverage |
 | --- | --- |
 | Color | Color spaces, conversions, interpolation, gamut mapping, CPU gradients |
-| Gamut | P3 negotiation with sRGB fallback, wide fills/gradients, native versus CPU mapping, presentation routes |
-| Media | Image viewing, atlas/mipmap comparison, filters, linear adjustments, float/P3, tiled canvas, video frames, resource limits |
+| Gamut | P3 negotiation with sRGB fallback, wide fills/gradients, native versus CPU mapping, presentation routes, built-in capture benchmarks |
+| Media | Image viewing, atlas/mipmap comparison, filters, linear adjustments, float/P3, tiled canvas, video frames, resource limits, embedded upload/cadence/scroll/capture benchmarks |
 | Parley | Shaping, distinct line layout and editable paragraphs, fallback/fonts, rasterization, scrolling, separate native/Parley glyph-atlas diagnostics |
 | Shader | Analytic gradients, direct/legacy Hermite editing, gradient coverage, WGSL, instancing, typography selection/effects, brushes, layer effects, shadows, borders |
 | SVG | Distinct rendering/scaling views, camera gestures, path effects, scheduling/cache, benchmark views |
 
-Validation tabs for Gamut, Media, Parley, Shader, and SVG expose isolated workloads and retain logs, reports, and captures under `artifacts/validation/`. Original source workers build offline in release on first use; their dependencies must already be cached. SVG corpus validation requires a user-selected corpus matching the source manifest. The full benchmark matrix has not been run as part of the initial publication.
+Every extension lab has an embedded **Benchmarks** tab. Workloads use code compiled into this application and save reports/captures to a retained temporary folder, accessible with **Reveal results**. No benchmark builds another application or requires Cargo, Python, sibling source trees, or cached build dependencies at runtime. Parley backend isolation and SVG corpus isolation launch fresh copies of this executable. External SVG artwork is selected by the user and is not downloaded automatically.
+
+Gamut → **Benchmarks** runs the embedded Gamut renderer and Luma controls directly in this application. Wide texture, instanced, gradient, SDR baseline, and current-control workloads draw five frames in a temporary hidden window. Results include per-frame CPU draw and render/readback timings, negotiated presentation status, and clipped sRGB PNG previews. GPU execution time and physical display fidelity are not measured. **Reveal results** opens the retained temporary results folder. These workloads are available in portable builds and do not invoke Cargo or external source workers.
+
+For an explicit native smoke run using an already-built app:
+
+```sh
+./target/debug/xgpui-lab --gamut-benchmark all --output artifacts/gamut-benchmarks
+```
+
+Media → **Benchmarks** embeds upload timing, visible frame cadence, sustained scrolling, atlas/mipmap capture, and native video pixel checks. Upload/capture workloads run on background threads; cadence and scrolling use temporary windows in this application. The scroll workload measures 5 seconds of baseline, 30 seconds of repeated decode/mip/upload replacement, and 5 seconds of cached scrolling. Keep measurement windows visible and foreground. Debug builds support functional runs and identify their profile; provisional release performance criteria are never reported as passed in debug builds. CoreVideo validation is available on macOS and explicitly unavailable on other platforms. **Cancel** stops a run and **Reveal results** opens its retained temporary reports and captures. No Media benchmark invokes Cargo or another executable.
+
+```sh
+./target/debug/xgpui-lab --media-benchmark all --output artifacts/media-benchmarks
+```
+
+Parley → **Benchmarks** compares native and Parley line shaping, cache hits, glyph rasterization, paragraph support, and a 5,000-line CPU corpus. It also runs each real text backend through 600 virtualized-scroll frames with four font styles and captures the Parley glyph atlas. Backends use fresh application processes with the same embedded sample/font corpus. The native paragraph capability is optional and is explicitly reported as unavailable where unsupported; line and glyph measurements remain comparable.
+
+Shader → **Benchmarks** embeds the original coverage, alpha/opacity, clip mapping, replay, resize, gradient geometry, source reuse, and portable WGSL checks. Pixel assertions run against the native renderer before five measured capture frames. Render/readback timings include GPU waits and are not GPU-only timings.
+
+SVG → **Benchmarks** measures the built-in scene, a chosen SVG, or a hash-verified corpus. Selected documents use five repeated parse/raster samples after first use at 4× zoom, density 2 and a 16 MiB output budget. Corpus mode defaults to four repository-local fixtures (16 cases), verifies every file before starting, and runs one fresh copy of this executable per document/zoom (1×, 4×, 8×, 16×; density 2; 256 MiB output budget). Raw case results, failures and previews are retained. Reported process RSS includes the whole process and is not a document allocation or GPU-memory measurement.
+
+```sh
+./target/debug/xgpui-lab --parley-benchmark all --output artifacts/parley-benchmarks
+./target/debug/xgpui-lab --shader-benchmark all --output artifacts/shader-benchmarks
+./target/debug/xgpui-lab --svg-benchmark all --input /path/to/artwork.svg --output artifacts/svg-benchmarks
+```
 
 Captured effects currently require SDR in xgpui. The app temporarily switches presentation for affected views and restores the previous mode when leaving them. Upstream tracking: [xgpui#53](https://github.com/gpui-luma-dev/xgpui/issues/53).
 
@@ -33,7 +59,7 @@ Verified source references:
 - xgpui: `73262f80be7e2b9bb8fa5cdc333f1bb3e7421b9e` on `codex/issue-51-build-hygiene`.
 - gpui-luma: `f49e03238db5fc36d0be5df42fa3ad21a872aff8` on `main`.
 
-Cargo path dependencies and patches select the sibling xgpui checkout. Some font and shader fixtures also use sibling paths. Keep those repositories present when compiling or invoking source validation workers. Branch names are informational; Cargo does not enforce the checked-out branch or revision.
+Cargo path dependencies and patches select the sibling xgpui checkout. Sample fonts, shader fixtures and the default SVG corpus live in `assets/samples/` and are embedded. Keep the dependency repositories present when compiling. Built applications do not read them at runtime. Branch names are informational; Cargo does not enforce the checked-out branch or revision.
 
 The Rust stable toolchain, rustfmt, and Clippy are selected by `rust-toolchain.toml`. Native verification has been performed on macOS; other platform dependencies are present but cross-platform support is not yet verified. The macOS renderer also needs the usual Xcode/Metal build tools.
 
@@ -102,8 +128,7 @@ python .github/scripts/check.py portable
 ```
 
 These commands save logs in `artifacts/ci/` and return the underlying Cargo
-exit status. The portable worker cancellation fixture uses the Rust test
-executable itself instead of `/bin/sleep`.
+exit status. Native benchmark smoke runs are explicit developer commands; headless unit tests do not launch GPU windows.
 
 ## Manual Windows app builds
 
@@ -136,18 +161,12 @@ supported Direct3D graphics/current drivers still needs a manual GUI smoke test.
 ARM64 artifacts are built and loader-tested on the native Windows ARM64 runner,
 not inferred from an x64 cross-compilation.
 
-Archives use the `portable-app` feature: source-worker **Validation** pages show
-an explicit unavailable notice, and source validation actions cannot start.
-The source worker executables, Rust/Cargo toolchain, sibling source trees, and
-external SVG corpus are not bundled. Interactive labs, built-in CPU benchmark
-views, and separate text-atlas windows remain available. The current generated
-video source is macOS-only; Windows P3 behavior depends on backend/display
-negotiation and must be read from the app's presentation status.
+Archives use the `portable-app` feature to identify distributable builds. All embedded benchmark tabs remain available; Rust/Cargo and source checkouts are not needed at runtime. The default SVG corpus and font/shader samples are embedded. CoreVideo checks require macOS Metal; other platforms report that capability as unavailable. Windows P3 behavior depends on backend/display negotiation and is recorded in benchmark reports.
 
-The ordinary source build retains source validation. CI tests both source and
-portable configurations. Signing, installers, automatic updates, full worker
-bundling, and macOS/Linux packaging remain separate future work.
+CI tests ordinary and portable configurations. Signing, installers, automatic updates, and macOS/Linux packaging remain separate future work.
 
 ## Source attribution
 
 The adapted application and lab source is covered by `LICENSE-APACHE` and documented in `NOTICE`. Font licenses are in `licenses/fonts/`. The repository's original MIT license is retained in `LICENSE`.
+
+Benchmark progress and timings appear in the application and retained JSON reports, without stdout logging. `--version` remains a command-line metadata response. Optional file pickers load user artwork; default samples require no external folder.

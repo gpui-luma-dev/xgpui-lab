@@ -11,7 +11,6 @@ use gpui_luma::prelude::TooltipEntityExt;
 use crate::gradient_builder::GradientBuilder;
 use crate::compositions::ColorCompositions;
 use crate::extension_pane::ExtensionPane;
-use gpui_luma_look_radix as radix;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Workspace {
@@ -54,7 +53,7 @@ impl XgpuiLabApp {
             (
                 Workspace::Gamut,
                 "xgpui-gamut-tabs",
-                &["Wide Color Fills", "Wide Gradients", "Gamut Mapping", "Presentation", "Validation"][..],
+                &["Wide Color Fills", "Wide Gradients", "Gamut Mapping", "Presentation", "Benchmarks"][..],
             ),
             (
                 Workspace::Media,
@@ -68,7 +67,7 @@ impl XgpuiLabApp {
                     "Tiled Canvas",
                     "Video Frames",
                     "Resource Limits",
-                    "Validation",
+                    "Benchmarks",
                 ][..],
             ),
             (
@@ -81,7 +80,7 @@ impl XgpuiLabApp {
                     "Fonts & Fallback",
                     "Rasterization",
                     "Scrolling",
-                    "Validation",
+                    "Benchmarks",
                 ][..],
             ),
             (
@@ -98,13 +97,13 @@ impl XgpuiLabApp {
                     "Layer Effects",
                     "Shadows",
                     "Borders",
-                    "Validation",
+                    "Benchmarks",
                 ][..],
             ),
             (
                 Workspace::Svg,
                 "xgpui-svg-tabs",
-                &["Rendering", "Scaling", "Path Effects", "Scheduling & Cache", "Benchmarks", "Validation"][..],
+                &["Rendering", "Scaling", "Path Effects", "Scheduling & Cache", "Benchmarks"][..],
             ),
         ]
         .map(|(workspace, id, labels)| {
@@ -125,7 +124,6 @@ impl XgpuiLabApp {
             let button = crate::theme::icon_button(format!("xgpui-nav-{label}"), icon)
                 .look(&look)
                 .content_only()
-                .size(radix::ButtonSize::Two)
                 .spawn(cx)
                 .tooltip(gpui_luma::controls::tooltip::Tooltip::new(label), cx);
             (workspace, button)

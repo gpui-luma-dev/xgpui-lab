@@ -27,19 +27,17 @@ pub(super) struct MeshPane {
     editor: super::hermite::HermiteEditor,
     buttons: Vec<Entity<Button>>,
     sliders: Vec<(Control, Slider)>,
+    choices: Vec<crate::lab_controls::Choice>,
 }
 impl MeshPane {
     pub fn new(look: Arc<Look>, cx: &mut Context<Self>) -> Self {
         let buttons = [
-            "Switch 2×2 / 3×3",
-            "Next preset",
-            "Next point",
-            "Reset selected point",
-            "Reset all points",
-            "Round-trip legacy grid",
+            (0, "Switch 2×2 / 3×3"),
+            (3, "Reset selected point"),
+            (4, "Reset all points"),
+            (5, "Round-trip legacy grid"),
         ]
         .into_iter()
-        .enumerate()
         .map(|(id, label)| {
             radix::Button::new(format!("hermite-{id}"))
                 .look(look.as_ref())
@@ -48,8 +46,6 @@ impl MeshPane {
                 .on_click(cx, move |this: &mut Self, cx| {
                     match id {
                         0 => this.editor.set_side(if this.editor.side == 2 { 3 } else { 2 }),
-                        1 => this.editor.load_preset((this.editor.preset + 1) % this.editor.preset_count()),
-                        2 => this.editor.selected = (this.editor.selected + 1) % this.editor.points.len(),
                         3 => this.editor.reset_selected(),
                         4 => this.editor.load_preset(this.editor.preset),
                         _ => {
@@ -90,11 +86,53 @@ impl MeshPane {
             (control, slider)
         })
         .collect();
-        let mut pane = Self { editor: super::hermite::HermiteEditor::new(0), buttons, sliders };
+        let choices = ["Preset", "Point"]
+            .into_iter()
+            .enumerate()
+            .map(|(id, label)| {
+                crate::lab_controls::Choice::new(
+                    format!("hermite-choice-{id}"),
+                    label,
+                    &look,
+                    (0..4).map(|i| format!("{label} {}", i + 1)).collect(),
+                    0,
+                    cx,
+                    move |this: &mut Self, index, cx| {
+                        if id == 0 {
+                            this.editor.load_preset(index as u8);
+                        } else {
+                            this.editor.selected = index;
+                        }
+                        this.sync(cx);
+                        cx.notify();
+                    },
+                )
+            })
+            .collect();
+        let mut pane = Self { editor: super::hermite::HermiteEditor::new(0), buttons, sliders, choices };
         pane.sync(cx);
         pane
     }
     fn sync(&mut self, cx: &mut Context<Self>) {
+        self.choices[0].sync(
+            (0..self.editor.preset_count()).map(|i| format!("Preset {}", i + 1)).collect(),
+            self.editor.preset as usize,
+            cx,
+        );
+        self.choices[1].sync(
+            (0..self.editor.points.len())
+                .map(|i| {
+                    format!(
+                        "Point {} (row {}, column {})",
+                        i + 1,
+                        i / self.editor.side as usize + 1,
+                        i % self.editor.side as usize + 1
+                    )
+                })
+                .collect(),
+            self.editor.selected,
+            cx,
+        );
         for (control, slider) in &self.sliders {
             slider.update(cx, |slider, cx| slider.set_value(self.editor.value(*control), cx));
         }
@@ -106,7 +144,7 @@ impl Render for MeshPane {
         self.editor.refresh();
         let mut root=div().id("hermite-editor-scroll").size_full().overflow_y_scroll().p_4().flex().flex_col().gap_4()
             .child("Hermite mesh · shared-point direct / legacy comparison")
-            .child(div().flex().flex_wrap().gap_2().children(self.buttons.clone()))
+            .child(div().flex().flex_wrap().gap_2().children(self.buttons.clone()).children(self.choices.clone()))
             .child(format!("{}×{} · preset {} · point {} (row {}, column {}) · edited {}",self.editor.side,self.editor.side,self.editor.preset,self.editor.selected+1,self.editor.selected/self.editor.side as usize+1,self.editor.selected%self.editor.side as usize+1,self.editor.edited))
             .child(div().flex().flex_wrap().gap_4().children(self.sliders.iter().map(|(control,slider)|div().w(px(200.)).flex().flex_col().gap_2().child(format!("{control:?}: {:.3}",self.editor.value(*control))).child(slider.clone()))))
             .child("Angles are clockwise from right. Lengths use normalized mesh space; angle changes at zero length are retained.");
@@ -163,12 +201,12 @@ mod tests {
             let page = page.read(cx);
             (
                 page.buttons[0].clone(),
-                page.buttons[2].clone(),
+                page.choices[1].clone(),
                 page.sliders.iter().find(|(control, _)| matches!(control, Control::Red)).unwrap().1.clone(),
             )
         });
         side.update(cx, |_, cx| cx.emit(ButtonEvent::Click));
-        point.update(cx, |_, cx| cx.emit(ButtonEvent::Click));
+        cx.update(|_, cx| point.select(1, cx));
         red.update(cx, |slider, cx| slider.set_thumb_position(slider.primary_thumb_id(), 0.23, cx));
         cx.run_until_parked();
         cx.update(|_, cx| {

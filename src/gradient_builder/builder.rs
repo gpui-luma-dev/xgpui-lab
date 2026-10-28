@@ -83,7 +83,7 @@ pub struct GradientBuilder {
     active_mesh_drag: Option<usize>,
     mesh_controls_visible: bool,
     freeform_controls_visible: bool,
-    visibility_button: Entity<Button<bool>>,
+    visibility_button: gpui_luma::controls::switch::Switch,
     copy_css_button: Entity<Button>,
     point_buttons: Vec<[Entity<Button>; 2]>,
     preview_size: Size<Pixels>,
@@ -144,21 +144,18 @@ impl GradientBuilder {
             .look(look.as_ref())
             .content_only()
             .radius(radix::Radius::Medium)
-            .size(radix::ButtonSize::One)
             .spawn(cx)
             .tooltip(Tooltip::new("Add color stop"), cx);
         let mesh_reset_button = crate::theme::icon_button("color-viz-mesh-reset", LucideIcon::RotateCcw)
             .look(look.as_ref())
             .content_only()
             .radius(radix::Radius::Medium)
-            .size(radix::ButtonSize::One)
             .spawn(cx)
             .tooltip(Tooltip::new("Reset canvas"), cx);
 
         let export_button = radix::Button::new("color-viz-export")
             .look(look.as_ref())
             .outline()
-            .size(radix::ButtonSize::One)
             .icon(LucideIcon::Download)
             .label("Export PNG")
             .spawn(cx);
@@ -252,37 +249,15 @@ impl GradientBuilder {
         let mesh_grid_preset = MeshGridPreset::SampleThreeByFour;
         let mesh_aspect_ratio_preset = MeshAspectRatioPreset::Fill;
 
-        let visibility_button = radix::Button::new("color-viz-point-visibility")
-            .typed(true)
-            .role(gpui_luma::controls::button_family::ButtonFamilyRole::Icon)
-            .content(|context, _| {
-                use gpui::prelude::*;
-                gpui::svg()
-                    .path(
-                        if context.data {
-                            LucideIcon::Eye
-                        } else {
-                            LucideIcon::EyeOff
-                        }
-                        .asset_path(),
-                    )
-                    .size(px(context.look.icon_size))
-                    .text_color(context.look.foreground)
-                    .into_any_element()
-            })
+        let visibility_button = radix::Switch::new("color-viz-point-visibility")
             .look(&look)
-            .content_only()
-            .size(radix::ButtonSize::One)
-            .with_template_modifier(|root, _| {
-                use gpui::prelude::*;
-                root.debug_selector(|| "point-visibility".into())
-            })
+            .label("Show points")
+            .checked(true)
             .spawn(cx)
             .tooltip(Tooltip::new("Hide/show points (right-click canvas)"), cx);
         let copy_css_button = crate::theme::icon_button("color-viz-copy-css", LucideIcon::Copy)
             .look(&look)
             .content_only()
-            .size(radix::ButtonSize::One)
             .spawn(cx)
             .tooltip(Tooltip::new("Copy gradient CSS"), cx);
         let mut builder = Self {
@@ -362,11 +337,16 @@ impl GradientBuilder {
             _subscriptions: Vec::new(),
         };
 
-        builder._subscriptions.push(cx.subscribe(&visibility_button, |this, _, event: &ButtonEvent, cx| {
-            if event.is_click() {
-                this.toggle_mesh_controls(cx);
-            }
-        }));
+        builder._subscriptions.push(cx.subscribe(
+            &visibility_button,
+            |this, _, event: &gpui_luma::controls::switch::SwitchEvent, cx| {
+                if let gpui_luma::controls::switch::SwitchEvent::Change { on } = event
+                    && *on != this.points_visible()
+                {
+                    this.toggle_mesh_controls(cx);
+                }
+            },
+        ));
         builder._subscriptions.push(cx.subscribe(&copy_css_button, |this, _, event: &ButtonEvent, cx| {
             if event.is_click() {
                 this.copy_gradient_css(cx);

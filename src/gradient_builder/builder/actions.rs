@@ -275,7 +275,6 @@ impl GradientBuilder {
             .look(self.look.as_ref())
             .content_only()
             .radius(radix::Radius::Medium)
-            .size(radix::ButtonSize::One)
             .spawn(cx)
             .tooltip(Tooltip::new("Remove color stop"), cx);
             button.update(cx, |button, cx| button.set_enabled(can_remove, cx));

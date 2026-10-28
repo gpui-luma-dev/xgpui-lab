@@ -7,6 +7,15 @@ use crate::theme::ColorVizLookExt;
 
 impl Render for MediaPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.active_tab == "Benchmarks" {
+            return div().size_full().child(self.benchmarks.clone()).into_any_element();
+        }
+        if let Some(mut run) = self.cadence.take()
+            && run.tick(self, window)
+        {
+            self.cadence = Some(run);
+        }
+        self.sync_choices(cx);
         if cx.reduce_motion() {
             self.sweep = false;
             self.animate = false;
@@ -117,15 +126,26 @@ impl Render for MediaPage {
             .gap_4()
             .text_color(self.look.chrome().body_text)
             .child(
-                div().flex().flex_wrap().gap_2().children(
-                    self.buttons
-                        .iter()
-                        .filter(|(action, _)| {
-                            actions.contains(action)
-                                && (!matches!(action, Action::Pause | Action::VideoBurst) || self.has_video())
-                        })
-                        .map(|(_, button)| button.clone()),
-                ),
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap_2()
+                    .children(
+                        self.buttons
+                            .iter()
+                            .filter(|(action, _)| {
+                                actions.contains(action)
+                                    && (!matches!(action, Action::Pause | Action::VideoBurst) || self.has_video())
+                            })
+                            .map(|(_, button)| button.clone()),
+                    )
+                    .children(
+                        self.choices
+                            .iter()
+                            .filter(|(action, _)| actions.contains(action))
+                            .map(|(_, choice)| choice.clone()),
+                    ),
             )
             .child(div().flex().flex_wrap().gap_4().children(
                 self.sliders.iter().filter(|(parameter, _)| parameters.contains(parameter)).map(
@@ -199,7 +219,7 @@ impl Render for MediaPage {
                     .child(format!("Staging pool: {:?}", loader.staging_pool_stats()));
             }
             root=root.child("Completed burst snapshots retire to release their source reservations. READY means host submission, not GPU completion. These budgets do not bound total RSS or VRAM.")
-                .child(div().flex().flex_wrap().gap_2().children(self.burst_images.iter().map(|image|image_view(image.clone()).w(px(110.)).h(px(80.)))));
+                .child(div().flex().flex_wrap().items_center().gap_2().children(self.burst_images.iter().map(|image|image_view(image.clone()).w(px(110.)).h(px(80.)))));
         }
         if self.active_tab == "Textures & Mipmaps"
             && let Some(image) = &self.image

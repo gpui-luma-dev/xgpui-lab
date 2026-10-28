@@ -86,6 +86,8 @@ pub struct ScrollLab {
     phase_baseline: Option<FrameDurationSnapshot>,
     rss_start: Option<f64>,
     rss_now: Option<f64>,
+    benchmark_output: Option<std::path::PathBuf>,
+    benchmark_phases: Vec<serde_json::Value>,
 }
 
 impl ScrollLab {
@@ -140,9 +142,14 @@ impl ScrollLab {
             phase_baseline: None,
             rss_start: initial_rss,
             rss_now: initial_rss,
+            benchmark_output: None,
+            benchmark_phases: Vec::new(),
         }
     }
 
+    pub fn set_benchmark_output(&mut self, output: Option<std::path::PathBuf>) {
+        self.benchmark_output = output;
+    }
     fn stats(window: &Window, baseline: Option<&FrameDurationSnapshot>) -> String {
         let mut s = window.frame_duration_snapshot();
         if let Some(b) = baseline {
@@ -196,32 +203,31 @@ impl ScrollLab {
         self.frame += 1;
         let completed = ((self.frame - 1) * 4 / self.limit).min(3);
         if self.frame == self.limit || completed != (self.frame * 4 / self.limit).min(3) {
-            println!(
-                "{} phase {} / {}px weight {}: {}",
-                self.name,
-                completed + 1,
-                STYLES[completed].0,
-                STYLES[completed].1,
-                Self::stats(window, self.phase_baseline.as_ref())
-            );
+            self.benchmark_phases.push(serde_json::json!({"phase": completed + 1, "font_size": STYLES[completed].0, "weight": STYLES[completed].1, "stats": Self::stats(window, self.phase_baseline.as_ref())}));
             self.phase_baseline = Some(window.frame_duration_snapshot());
         }
         if self.frame >= self.limit {
             self.running = false;
             self.rss_now = rss();
-            println!(
-                "{} scroll: {} callbacks; {}/{} distinct rows built; {} | process RSS {} -> {} | scale {}x, release={}\nSubmission intervals include platform pacing; neither GPU time nor confirmed displayed FPS. UI includes list/header/profiler overhead.\n",
-                self.name,
-                self.frame,
-                self.seen.iter().filter(|v| **v).count(),
-                self.lines.len(),
-                Self::stats(window, self.baseline.as_ref()),
-                memory(self.rss_start),
-                memory(self.rss_now),
-                window.scale_factor(),
-                !cfg!(debug_assertions)
-            );
+
             if self.exit_after {
+                if let Some(output) = &self.benchmark_output {
+                    let saved = (|| -> anyhow::Result<()> {
+                        anyhow::ensure!(self.seen.iter().any(|seen| *seen), "no scroll rows rendered");
+                        window.render_to_image()?.save(output.join("capture.png"))?;
+                        let report = serde_json::json!({"backend": self.name, "frame_callbacks": self.frame,
+                            "distinct_rows": self.seen.iter().filter(|seen| **seen).count(), "corpus_rows": self.lines.len(),
+                            "phases": self.benchmark_phases, "stats": Self::stats(window, self.baseline.as_ref()),
+                            "process_rss_start_mib": self.rss_start, "process_rss_end_mib": self.rss_now,
+                            "scale_factor": window.scale_factor(), "measurement": "Actual native window with virtualized list and four font styles; CPU draw and submission intervals. Not GPU time or confirmed displayed FPS.", "errors": []});
+                        std::fs::write(output.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
+                        Ok(())
+                    })();
+                    if let Err(error) = saved {
+                        eprintln!("Text scrolling benchmark: {error:#}");
+                        std::process::exit(1);
+                    }
+                }
                 cx.quit();
             }
         } else {

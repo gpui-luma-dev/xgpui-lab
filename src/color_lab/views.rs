@@ -55,6 +55,7 @@ fn triple(values: [f64; 3]) -> String {
 
 impl Render for ColorPage {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_choices(_cx);
         let actions: &[Action] = match self.active_tab.as_ref() {
             "Color Spaces" => &[Action::Source, Action::Reset],
             "Conversions" => &[Action::Source, Action::Destination, Action::Reset],
@@ -93,17 +94,34 @@ impl Render for ColorPage {
             .gap_4()
             .text_color(self.look.chrome().body_text)
             .child(
-                div().flex().flex_wrap().gap_2().children(
-                    self.buttons
-                        .iter()
-                        .filter(|(action, _)| {
-                            actions.contains(action)
-                                && !(*action == Action::Hue
-                                    && self.active_tab == "CPU Gradients"
-                                    && self.model_index != 2)
-                        })
-                        .map(|(_, button)| button.clone()),
-                ),
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap_2()
+                    .children(
+                        self.buttons
+                            .iter()
+                            .filter(|(action, _)| {
+                                actions.contains(action)
+                                    && !(*action == Action::Hue
+                                        && self.active_tab == "CPU Gradients"
+                                        && self.model_index != 2)
+                            })
+                            .map(|(_, button)| button.clone()),
+                    )
+                    .children(
+                        self.choices
+                            .iter()
+                            .filter(|(action, _)| {
+                                actions.contains(action)
+                                    && !(*action == Action::Hue
+                                        && self.active_tab == "CPU Gradients"
+                                        && self.model_index != 2)
+                            })
+                            .map(|(_, choice)| choice.clone()),
+                    )
+                    .when(actions.contains(&Action::Alpha), |row| row.child(self.transparency.clone())),
             )
             .child(div().flex().flex_wrap().gap_4().children(
                 self.sliders.iter().filter(|(parameter, _)| parameters.contains(parameter)).map(
