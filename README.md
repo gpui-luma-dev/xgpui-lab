@@ -56,8 +56,8 @@ Add `--offline` to Cargo build/test/check commands when dependencies are cached.
 The `CI` workflow runs on pull requests, pushes to `main`, and manual dispatch.
 Its stable check names are **Native (macOS)** and **Native (Windows x64)**.
 Each job checks formatting, compiles all app targets with test support, runs
-Clippy with warnings denied, and executes the headless test suite. Linux CI
-and distributable packaging are separate follow-up work.
+Clippy with warnings denied, and executes the headless test suite. Linux CI remains follow-up work; distributable Windows archives use the
+separate manual workflow documented below.
 
 CI checks out three sibling folders under the runner workspace: `app/`
 (this repository), `xgpui/`, and `gpui-luma/`. Exact dependency commits live in
@@ -69,7 +69,7 @@ in the cache identity. It does not depend on uncommitted developer edits.
 Remove the bridge when a tested upstream Luma revision supports xgpui directly.
 
 The reusable `.github/actions/prepare-dependencies` action expects the app at
-`app/` and can also be used by the future manual Windows builder (#5).
+`app/` and is also used by the manual Windows app builder.
 Python 3.13 and Git must be installed before calling it. Preparation verifies
 the exact SHAs and refuses dirty sibling trees; run it only in disposable
 checkouts, not over a working development environment. Pin updates must include
@@ -87,7 +87,8 @@ versions as seven-day workflow artifacts, including completed diagnostics on
 failed runs. It does not open native windows, run the full interactive benchmark
 suite, establish GPU/physical-P3 parity, or package/release the app. The current
 generated video source is macOS-only and reports that limitation on other platforms.
-Windows native rendering and packaging still need separate smoke testing.
+Windows native rendering still needs a separate interactive smoke test; the
+manual builder checks archive packaging and OS-loader startup.
 
 To reproduce the workflow commands from a prepared app checkout:
 
@@ -146,15 +147,6 @@ negotiation and must be read from the app's presentation status.
 The ordinary source build retains source validation. CI tests both source and
 portable configurations. Signing, installers, automatic updates, full worker
 bundling, and macOS/Linux packaging remain separate future work.
-
-## Status and follow-up
-
-This is a functional integration baseline, not the final polished product. The initial verification includes 60 passing tests, a development build, Clippy, selected native rendering/interaction checks, and an isolated source SVG benchmark. It does not establish complete performance or browser parity.
-
-- [#1: Deep cleanup and consistent UI polish](https://github.com/gpui-luma-dev/xgpui-lab/issues/1)
-- [#2: Lab-code ownership and WASM website migration boundaries](https://github.com/gpui-luma-dev/xgpui-lab/issues/2)
-
-Lab extraction has not been performed. The existing xgpui website still imports some lab source directly and packages lab assets; moving those files needs a coordinated migration. Neither follow-up issue is completed by this initial snapshot.
 
 ## Source attribution
 
