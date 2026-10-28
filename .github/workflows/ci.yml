@@ -114,7 +114,3 @@ jobs:
           path: app/artifacts/ci/
           if-no-files-found: warn
           retention-days: 7
-
-  validate-manual-windows-builder:
-    if: github.event_name == 'workflow_dispatch'
-    uses: ./.github/workflows/build.yml
