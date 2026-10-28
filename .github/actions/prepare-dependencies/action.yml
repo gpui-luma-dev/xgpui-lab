@@ -1,0 +1,30 @@
+name: Prepare pinned sibling dependencies
+description: Check out exact xgpui/Luma revisions and apply the tracked dependency bridge.
+outputs:
+  cache-key:
+    description: Hash of dependency pins, compatibility patch, lockfile, and toolchain selection.
+    value: ${{ steps.pins.outputs.cache-key }}
+runs:
+  using: composite
+  steps:
+    - name: Read dependency pins
+      id: pins
+      shell: bash
+      run: python "${{ github.action_path }}/../../scripts/dependencies.py" outputs
+    - name: Check out xgpui
+      uses: actions/checkout@v5
+      with:
+        repository: ${{ steps.pins.outputs.xgpui-repository }}
+        ref: ${{ steps.pins.outputs.xgpui-revision }}
+        path: xgpui
+        persist-credentials: false
+    - name: Check out GPUI Luma
+      uses: actions/checkout@v5
+      with:
+        repository: ${{ steps.pins.outputs.gpui-luma-repository }}
+        ref: ${{ steps.pins.outputs.gpui-luma-revision }}
+        path: gpui-luma
+        persist-credentials: false
+    - name: Verify clean pins and apply dependency bridge
+      shell: bash
+      run: python "${{ github.action_path }}/../../scripts/dependencies.py" prepare

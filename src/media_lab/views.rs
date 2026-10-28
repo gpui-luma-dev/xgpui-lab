@@ -315,6 +315,7 @@ impl MediaPage {
     }
 
     fn video_view(&mut self, window: &mut Window) -> AnyElement {
+        #[cfg(target_os = "macos")]
         use xgpui_media::pipeline::ImagePrimaries;
         let mut root = div()
             .flex()

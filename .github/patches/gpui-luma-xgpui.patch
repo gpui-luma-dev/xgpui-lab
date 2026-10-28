@@ -1,0 +1,17 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -44,11 +44,11 @@
+ gpui-luma-look-radix = { version = "0.2.1", path = "crates/look-radix" }
+ gpui-luma-plot = { version = "0.2.1", path = "crates/plot" }
+ luma-app-common = { path = "apps/common" }
+-gpui = { package = "gpui-unofficial", version = "=1.24.2" }
++gpui = { path = "../xgpui/gpui/crates/gpui" }
+ lucide-svg-static = { package = "lucide-static-svg", version = "1.45.0" }
+ gpui_platform = {
+-  package = "gpui-platform-gpui-unofficial",
+-  version = "=1.24.2",
++  package = "gpui-platform",
++  path = "../xgpui/gpui/crates/gpui-platform",
+   features = ["font-kit"],
+ }
+ image = "0.25"

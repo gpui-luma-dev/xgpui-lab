@@ -12,11 +12,11 @@ build:
 
 # Format application source.
 fmt:
-    cargo fmt --all
+    cargo fmt --package xgpui-lab
 
 # Check formatting without changing files.
 fmt-check:
-    cargo fmt --all --check
+    cargo fmt --package xgpui-lab -- --check
 
 # Check all targets, including headless test support.
 clippy:
