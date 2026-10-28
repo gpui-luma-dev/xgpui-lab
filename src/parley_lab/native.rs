@@ -3,6 +3,9 @@ use super::*;
 use std::borrow::Cow;
 
 pub fn run(backend: &str, frames: usize) -> Result<()> {
+    run_with_output(backend, frames, None)
+}
+fn run_with_output(backend: &str, frames: usize, output: Option<std::path::PathBuf>) -> Result<()> {
     anyhow::ensure!(matches!(backend, "native" | "parley"), "expected native or parley text backend");
     let platform = gpui_platform::current_platform(false);
     let text: Arc<dyn PlatformTextSystem> = if backend == "parley" {
@@ -18,6 +21,8 @@ pub fn run(backend: &str, frames: usize) -> Result<()> {
         Cow::Borrowed(paragraph::FONTS[1]),
     ])?;
     let name = backend.to_owned();
+    let benchmark_output = output.clone();
+    let report_backend = name.clone();
     application.run(move |cx| {
         if let Err(error) = gpui_luma::init(cx) {
             eprintln!("Luma initialization: {error:#}");
@@ -31,15 +36,36 @@ pub fn run(backend: &str, frames: usize) -> Result<()> {
         let result = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(1100.), px(850.)), cx))),
+                show: frames > 0 || output.is_none(),
+                focus: frames > 0 || output.is_none(),
                 ..Default::default()
             },
             move |window, cx| {
                 window.set_window_title(&format!("XGPUI Text Atlas · {name}"));
-                cx.new(|cx| NativeText::new(name, frames, cx))
+                cx.new(|cx| {
+                    let page = NativeText::new(name, frames, cx);
+                    if frames > 0 {
+                        page.scroll.update(cx, |scroll, _| scroll.set_benchmark_output(output));
+                    }
+                    page
+                })
             },
         );
-        if let Err(error) = result {
+        if let Err(error) = &result {
             eprintln!("Native text window: {error:#}");
+            if benchmark_output.is_some() { std::process::exit(1); }
+            cx.quit();
+        }
+        if frames == 0 && let (Some(output), Ok(handle)) = (benchmark_output, result) {
+            let captured = cx.update_window(handle.into(), |_, window, cx| -> Result<()> {
+                for _ in 0..5 { window.refresh(); window.draw(cx).clear(cx); }
+                window.render_to_image()?.save(output.join("capture.png"))?;
+                let report = serde_json::json!({"backend": report_backend, "frames": 5,
+                    "checks": "real GPUI text shaping and glyph-atlas capture using the selected application backend", "errors": []});
+                std::fs::write(output.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
+                Ok(())
+            });
+            if let Err(error) = captured.and_then(|result| result) { eprintln!("Text atlas capture: {error:#}"); std::process::exit(1); }
             cx.quit();
         }
         cx.on_window_closed(|cx, _| {
@@ -141,5 +167,52 @@ impl Render for NativeText {
             }
         }
         root
+    }
+}
+
+/// Internal entry point used by this app's benchmark panel. No source workers or runtime compilation.
+pub fn benchmark(backend: &str, mode: &str, output: &std::path::Path) -> Result<()> {
+    anyhow::ensure!(matches!(backend, "native" | "parley"), "unknown text backend");
+    std::fs::create_dir_all(output)?;
+    match mode {
+        "scroll" => run_with_output(backend, 600, Some(output.to_path_buf())),
+        "atlas" => run_with_output(backend, 0, Some(output.to_path_buf())),
+        "cpu" => {
+            let platform = gpui_platform::current_platform(false);
+            let native = platform.text_system();
+            let parley = if backend == "parley" {
+                Some(Engine::new()?)
+            } else {
+                None
+            };
+            let text_backend: Arc<dyn PlatformTextSystem> =
+                parley.as_ref().map_or_else(|| native.clone(), |engine| engine.backend.clone());
+            let system = Arc::new(TextSystem::new(text_backend.clone()));
+            system.add_fonts(vec![
+                Cow::Borrowed(samples::PLEX),
+                Cow::Borrowed(samples::INTER),
+                Cow::Borrowed(paragraph::FONTS[0]),
+                Cow::Borrowed(paragraph::FONTS[1]),
+            ])?;
+            let samples = samples::samples()?;
+            let lines = timings::measure(system.clone(), &*text_backend, &samples, 20, 2.)?;
+            let paragraphs = match paragraph::measure(system.clone(), 20) {
+                Ok(timings) => serde_json::json!({"outcome": "completed", "timings": timings}),
+                Err(error)
+                    if error.root_cause().to_string() == "paragraph layout is unsupported by this text backend" =>
+                {
+                    serde_json::json!({"outcome": "unavailable", "reason": "This backend provides line shaping and glyph rasterization but does not implement the optional paragraph API."})
+                }
+                Err(error) => return Err(error),
+            };
+            let scroll = workload::measure(system, &workload::corpus(5000), &samples[2].font)?;
+            let report = serde_json::json!({"backend": backend, "iterations": 20, "lines": lines,
+                "sample_labels": samples.iter().map(|sample| &sample.label).collect::<Vec<_>>(),
+                "paragraphs": paragraphs, "scroll_corpus_cpu": scroll,
+                "measurement": "CPU shaping/cache and direct glyph rasterization; paragraph reflow; 5000-line corpus. Independent backend process; not GPU or UI frame timings.", "errors": []});
+            std::fs::write(output.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
+            Ok(())
+        }
+        _ => anyhow::bail!("unknown text benchmark mode"),
     }
 }

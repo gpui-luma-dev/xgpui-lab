@@ -39,6 +39,7 @@ fn strip(colors: &[[f32; 4]], p3: bool) -> anyhow::Result<AnyElement> {
 
 impl GamutPage {
     pub(super) fn lab_content(&self, wide: bool, _window: &mut Window, _cx: &mut Context<Self>) -> AnyElement {
+        self.sync_choices(_cx);
         let presentation = self.active_tab == "Presentation";
         let actions: &[Action] = if presentation {
             &[
@@ -55,12 +56,29 @@ impl GamutPage {
             &[Action::Preset, Action::Mapping, Action::Alpha]
         };
         let mut content = div().flex().flex_col().gap_4().child(
-            div().flex().flex_wrap().gap_2().children(
-                self.controls
-                    .iter()
-                    .filter(|(action, _)| actions.contains(action))
-                    .map(|(_, button)| button.clone()),
-            ),
+            div()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap_2()
+                .children(
+                    self.controls
+                        .iter()
+                        .filter(|(action, _)| actions.contains(action))
+                        .map(|(_, button)| button.clone()),
+                )
+                .children(
+                    self.choices
+                        .iter()
+                        .filter(|(action, _)| actions.contains(action))
+                        .map(|(_, choice)| choice.clone()),
+                )
+                .children(
+                    self.switches
+                        .iter()
+                        .filter(|(action, _)| actions.contains(action))
+                        .map(|(_, switch)| switch.clone()),
+                ),
         );
         let result = match self.active_tab.as_ref() {
             "Wide Gradients" => self.gradients(wide),
@@ -82,7 +100,10 @@ impl GamutPage {
         }
         match result {
             Ok(view) => content.child(view).into_any_element(),
-            Err(error) => content.child(format!("Lab unavailable: {error:#}")).into_any_element(),
+            Err(error) => {
+                self.paint_errors.borrow_mut().push(format!("{error:#}"));
+                content.child(format!("Lab unavailable: {error:#}")).into_any_element()
+            }
         }
     }
 
@@ -179,6 +200,7 @@ impl GamutPage {
                         policy,
                     )?;
                     let painter = self.painter.as_ref().map_err(|e| anyhow::anyhow!("{e:#}"))?.clone();
+                    let paint_errors = self.paint_errors.clone();
                     view = view
                         .child(
                             div().h(px(48.)).child(
@@ -186,6 +208,7 @@ impl GamutPage {
                                     |_, _, _| (),
                                     move |bounds, _, window, _| {
                                         if let Err(error) = painter.paint_gradient(window, bounds, px(0.), &gradient) {
+                                            paint_errors.borrow_mut().push(format!("P3 mapping: {error:#}"));
                                             eprintln!("P3 mapping: {error:#}");
                                         }
                                     },
@@ -223,7 +246,12 @@ impl GamutPage {
         let surface = |left: f32, top: f32, source: [f32; 4], fallback| -> anyhow::Result<AnyElement> {
             let color = Arc::new(WideColor::linear_p3(source)?);
             let route = self.route;
-            let painter = self.painter.as_ref().ok().cloned();
+            let painter = if wide && route > 0 {
+                Some(self.painter.as_ref().map_err(|error| anyhow::anyhow!("{error:#}"))?.clone())
+            } else {
+                None
+            };
+            let paint_errors = self.paint_errors.clone();
             let endpoints = [source, [source[2], source[0], source[1], source[3]]].map(|rgba| {
                 LinearRgba::new(
                     LinearRgb::new(RgbSpace::DisplayP3, [rgba[0] as f64, rgba[1] as f64, rgba[2] as f64]).unwrap(),
@@ -260,6 +288,7 @@ impl GamutPage {
                                         painter.paint_color(window, bounds, px(0.), &color)
                                     };
                                     if let Err(error) = result {
+                                        paint_errors.borrow_mut().push(format!("P3 comparison route: {error:#}"));
                                         eprintln!("P3 comparison route: {error:#}");
                                     }
                                 } else {

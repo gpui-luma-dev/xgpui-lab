@@ -1,5 +1,6 @@
 pub(crate) mod reference;
 mod labs;
+pub(crate) mod benchmarks;
 
 use std::sync::Arc;
 
@@ -79,34 +80,108 @@ pub struct GamutPage {
     requested_wide: bool,
     route: usize,
     controls: Vec<(Action, Entity<Button>)>,
+    choices: Vec<(Action, crate::lab_controls::Choice)>,
+    switches: Vec<(Action, gpui_luma::controls::switch::Switch)>,
+    benchmarks: Entity<benchmarks::Benchmarks>,
+    last_lab_tab: SharedString,
+    paint_errors: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl GamutPage {
+    fn init_choices(&mut self, cx: &mut Context<Self>) {
+        self.choices = [Action::Preset, Action::Route]
+            .into_iter()
+            .map(|action| {
+                let (label, options, selected) = self.choice_options(action);
+                let choice = crate::lab_controls::Choice::new(
+                    format!("gamut-{action:?}"),
+                    label,
+                    &self.look,
+                    options,
+                    selected,
+                    cx,
+                    move |this: &mut Self, index, cx| this.select_choice(action, index, cx),
+                );
+                (action, choice)
+            })
+            .collect();
+    }
+    fn sync_choices(&self, cx: &mut gpui::App) {
+        for (action, choice) in &self.choices {
+            let (_, options, selected) = self.choice_options(*action);
+            choice.sync(options, selected, cx);
+        }
+    }
+    fn choice_options(&self, action: Action) -> (&'static str, Vec<String>, usize) {
+        match action {
+            Action::Preset => ("Palette", reference::PRESETS.iter().map(|s| s.to_string()).collect(), self.preset),
+            Action::Route => {
+                ("Presentation path", crate::lab_controls::labels(&["Texture", "Instanced", "Gradient"]), self.route)
+            }
+            _ => unreachable!("action has no selector"),
+        }
+    }
+    fn select_choice(&mut self, action: Action, index: usize, cx: &mut Context<Self>) {
+        match action {
+            Action::Preset => {
+                self.preset = index;
+            }
+            Action::Route => {
+                self.route = index;
+            }
+            _ => unreachable!("action has no selector"),
+        }
+
+        cx.notify();
+    }
+
+    pub fn activate(&mut self, tab: SharedString, cx: &mut Context<Self>) {
+        if tab == "Benchmarks" {
+            let settings = benchmarks::Settings::from_page(self);
+            self.benchmarks.update(cx, |benchmarks, _| benchmarks.settings = settings);
+        } else {
+            self.last_lab_tab = tab.clone();
+        }
+        self.active_tab = tab;
+        cx.notify();
+    }
+
     pub fn new(look: Arc<Look>, p3_error: Option<String>, cx: &mut Context<Self>) -> Self {
         let controls = [
-            (Action::Preset, "Next palette"),
             (Action::Mapping, "Toggle clipping / chroma"),
-            (Action::Alpha, "Toggle alpha"),
             (Action::Presentation, "Toggle P3 / sRGB"),
-            (Action::Overlay, "Toggle overlays"),
             (Action::Opacity, "Toggle opacity"),
             (Action::Order, "Reverse surfaces"),
             (Action::Background, "Toggle background"),
-            (Action::Route, "Next texture / instanced / gradient path"),
         ]
         .map(|(action, label)| {
             (
                 action,
-                radix::Button::new(format!("gamut-{action:?}"))
-                    .look(look.as_ref())
-                    .outline()
-                    .size(radix::ButtonSize::One)
-                    .label(label)
-                    .spawn(cx),
+                radix::Button::new(format!("gamut-{action:?}")).look(look.as_ref()).outline().label(label).spawn(cx),
             )
         })
         .to_vec();
+        let switches = [(Action::Alpha, "Transparency", false), (Action::Overlay, "Overlays", true)]
+            .map(|(action, label, checked)| {
+                (
+                    action,
+                    radix::Switch::new(format!("gamut-{action:?}"))
+                        .look(look.as_ref())
+                        .label(label)
+                        .checked(checked)
+                        .on_value_changed(cx, move |this: &mut Self, on, cx| {
+                            match action {
+                                Action::Alpha => this.translucent = on,
+                                Action::Overlay => this.overlay = on,
+                                _ => unreachable!(),
+                            }
+                            cx.notify();
+                        })
+                        .spawn(cx),
+                )
+            })
+            .to_vec();
         let subscriptions = controls
             .iter()
             .map(|(action, button)| {
@@ -114,8 +189,7 @@ impl GamutPage {
                 cx.subscribe(button, move |this, _, event: &ButtonEvent, cx| {
                     if event.is_click() {
                         match action {
-                            Action::Route => this.route = (this.route + 1) % 3,
-                            Action::Preset => this.preset = (this.preset + 1) % reference::PRESETS.len(),
+                            Action::Route | Action::Preset => unreachable!("selector setting"),
                             Action::Mapping => {
                                 this.policy = if this.policy == GamutMapping::Clip {
                                     GamutMapping::ReduceChroma
@@ -155,7 +229,8 @@ impl GamutPage {
                 })
             })
             .collect();
-        Self {
+        let benchmarks = cx.new(|cx| benchmarks::Benchmarks::new(look.clone(), cx));
+        let mut page = Self {
             look,
             p3_error,
             samples: samples(),
@@ -172,13 +247,24 @@ impl GamutPage {
             requested_wide: true,
             route: 0,
             controls,
+            choices: Vec::new(),
+            switches,
+            benchmarks,
+            last_lab_tab: "Wide Color Fills".into(),
+            paint_errors: Default::default(),
             _subscriptions: subscriptions,
-        }
+        };
+        page.init_choices(cx);
+        page
     }
 }
 
 impl Render for GamutPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.active_tab == "Benchmarks" {
+            return div().size_full().child(self.benchmarks.clone()).into_any_element();
+        }
+        self.paint_errors.borrow_mut().clear();
         self.window_handle = Some(window.window_handle());
         let status = window.color_status();
         let wide = status.effective() == WindowColorMode::WideGamutSdr;
@@ -273,6 +359,7 @@ impl Render for GamutPage {
                     })),
             })
             .when(self.active_tab != "Wide Color Fills", |page| page.child(self.lab_content(wide, window, cx)))
+            .into_any_element()
     }
 }
 
@@ -313,6 +400,19 @@ mod tests {
                 button.update(cx, |_, cx| cx.emit(ButtonEvent::Click));
                 cx.run_until_parked();
             }
+        }
+        let choices = cx.update(|_, cx| page.read(cx).choices.clone());
+        for (action, choice) in choices {
+            cx.update(|_, cx| choice.select(if action == Action::Preset { 2 } else { 1 }, cx));
+        }
+        let switches = cx.update(|_, cx| page.read(cx).switches.clone());
+        for (_, switch) in switches {
+            switch.update(cx, |switch, cx| {
+                let on = !*switch.data();
+                switch.set_data(on, cx);
+                cx.emit(gpui_luma::controls::switch::SwitchEvent::Change { on });
+            });
+            cx.run_until_parked();
         }
         cx.update(|_, cx| {
             let page = page.read(cx);

@@ -5,6 +5,7 @@ mod views;
 mod camera;
 mod imports;
 mod scaling;
+pub(crate) mod benchmarks;
 
 use std::{sync::Arc, time::Instant};
 use gpui::{AppContext, Context, Entity, RenderImage, SharedString, size};
@@ -90,6 +91,7 @@ pub struct SvgPage {
     values: [f32; 6],
     paths: anyhow::Result<Vec<MeasuredPath>>,
     buttons: Vec<(Action, Entity<Button>)>,
+    choices: Vec<(Action, crate::lab_controls::Choice)>,
     sliders: Vec<(Parameter, Slider)>,
     benchmarking: bool,
     bench_result: Option<Result<Vec<String>, String>>,
@@ -109,6 +111,122 @@ pub struct SvgPage {
     eager: bool,
 }
 impl SvgPage {
+    fn init_choices(&mut self, cx: &mut Context<Self>) {
+        self.choices = [
+            Action::ScalingBudget,
+            Action::Preview,
+            Action::Settle,
+            Action::Budget,
+            Action::Jobs,
+            Action::Pool,
+            Action::Tiles,
+            Action::Dash,
+        ]
+        .into_iter()
+        .map(|action| {
+            let (label, options, selected) = self.choice_options(action);
+            let choice = crate::lab_controls::Choice::new(
+                format!("svg_lab-{action:?}"),
+                label,
+                &self.look,
+                options,
+                selected,
+                cx,
+                move |this: &mut Self, index, cx| this.select_choice(action, index, cx),
+            );
+            (action, choice)
+        })
+        .collect();
+    }
+    fn sync_choices(&self, cx: &mut gpui::App) {
+        for (action, choice) in &self.choices {
+            let (_, options, selected) = self.choice_options(*action);
+            choice.sync(options, selected, cx);
+        }
+    }
+    fn choice_options(&self, action: Action) -> (&'static str, Vec<String>, usize) {
+        match action {
+            Action::ScalingBudget => (
+                "Scaling budget",
+                crate::lab_controls::labels(&["256 KiB", "1 MiB", "4 MiB", "16 MiB", "32 MiB"]),
+                [MIB / 4, MIB, 4 * MIB, 16 * MIB, 32 * MIB]
+                    .iter()
+                    .position(|&n| n == self.policy.max_output_bytes)
+                    .unwrap_or(3),
+            ),
+            Action::Preview => (
+                "Preview resolution",
+                crate::lab_controls::labels(&["128 px", "320 px", "640 px"]),
+                [128, 320, 640].iter().position(|&n| n == self.policy.preview_edge).unwrap_or(0),
+            ),
+            Action::Settle => (
+                "Settle delay",
+                crate::lab_controls::labels(&["50 ms", "120 ms", "300 ms"]),
+                [50, 120, 300].iter().position(|&n| n == self.policy.settle_delay.as_millis()).unwrap_or(1),
+            ),
+            Action::Budget => (
+                "Output budget",
+                crate::lab_controls::labels(&["256 KiB", "1 MiB", "4 MiB", "16 MiB", "32 MiB"]),
+                [MIB / 4, MIB, 4 * MIB, 16 * MIB, 32 * MIB]
+                    .iter()
+                    .position(|&n| n == self.policy.max_output_bytes)
+                    .unwrap_or(3),
+            ),
+            Action::Jobs => (
+                "Job limit",
+                crate::lab_controls::labels(&["1", "2", "4"]),
+                [1, 2, 4].iter().position(|&n| n == self.jobs).unwrap_or(0),
+            ),
+            Action::Pool => {
+                ("Pool budget", crate::lab_controls::labels(&["16 MiB", "32 MiB", "64 MiB"]), self.pool_index)
+            }
+            Action::Tiles => (
+                "Gallery size",
+                crate::lab_controls::labels(&["6", "12", "24", "48", "96"]),
+                [6, 12, 24, 48, 96].iter().position(|&n| n == self.tiles).unwrap_or(0),
+            ),
+            Action::Dash => (
+                "Dash pattern",
+                crate::lab_controls::labels(&["Solid", "16 / 8 px", "4 / 7 px", "18 / 5 / 3 px"]),
+                self.dash,
+            ),
+            _ => unreachable!("action has no selector"),
+        }
+    }
+    fn select_choice(&mut self, action: Action, index: usize, cx: &mut Context<Self>) {
+        match action {
+            Action::ScalingBudget => {
+                self.policy.max_output_bytes = [MIB / 4, MIB, 4 * MIB, 16 * MIB, 32 * MIB][index];
+            }
+            Action::Preview => {
+                self.policy.preview_edge = [128, 320, 640][index];
+            }
+            Action::Settle => {
+                self.policy.settle_delay = std::time::Duration::from_millis([50, 120, 300][index]);
+            }
+            Action::Budget => {
+                self.policy.max_output_bytes = [MIB / 4, MIB, 4 * MIB, 16 * MIB, 32 * MIB][index];
+            }
+            Action::Jobs => {
+                self.jobs = [1, 2, 4][index];
+                self.reset_scheduler();
+            }
+            Action::Pool => {
+                self.pool_index = index;
+                self.reset_scheduler();
+            }
+            Action::Tiles => {
+                self.tiles = [6, 12, 24, 48, 96][index];
+            }
+            Action::Dash => {
+                self.dash = index;
+            }
+            _ => unreachable!("action has no selector"),
+        }
+
+        cx.notify();
+    }
+
     pub fn new(look: Arc<Look>, cx: &mut Context<Self>) -> Self {
         let buttons = [
             (Action::Zoom1, "1×"),
@@ -117,9 +235,6 @@ impl SvgPage {
             (Action::Zoom8, "8×"),
             (Action::Zoom16, "16×"),
             (Action::DevicePixels, "1 source px / device px"),
-            (Action::ScalingBudget, "Next scaling budget"),
-            (Action::Preview, "Next preview resolution"),
-            (Action::Settle, "Next settle delay"),
             (Action::Open, "Open SVG…"),
             (Action::Builtin, "Built-in scene"),
             (Action::Gallery, "Open gallery folder…"),
@@ -128,11 +243,6 @@ impl SvgPage {
             (Action::Clip, "Toggle SVG clipping"),
             (Action::Shadow, "Toggle SVG shadow"),
             (Action::Background, "Toggle backdrop"),
-            (Action::Budget, "Next output budget"),
-            (Action::Jobs, "Next job limit"),
-            (Action::Pool, "Next pool budget"),
-            (Action::Tiles, "Next gallery size"),
-            (Action::Dash, "Next dash pattern"),
             (Action::Reset, "Reset view"),
             (Action::Benchmark, "Run 5 CPU samples"),
         ]
@@ -142,7 +252,6 @@ impl SvgPage {
                 radix::Button::new(format!("svg-lab-{action:?}"))
                     .look(look.as_ref())
                     .outline()
-                    .size(radix::ButtonSize::One)
                     .label(label)
                     .on_click(cx, move |this: &mut Self, cx| this.action(action, cx))
                     .spawn(cx),
@@ -185,7 +294,7 @@ impl SvgPage {
             )
         })
         .to_vec();
-        Self {
+        let mut page = Self {
             look,
             active_tab: "Rendering".into(),
             asset: Self::build(false, true, cx),
@@ -203,6 +312,7 @@ impl SvgPage {
             values: [1., 0., 0., 0.68, 0., 4.],
             paths: paths::samples(),
             buttons,
+            choices: Vec::new(),
             sliders,
             benchmarking: false,
             bench_result: None,
@@ -220,7 +330,9 @@ impl SvgPage {
             gallery_scroll: gpui::ScrollHandle::new(),
             gallery_columns: 3,
             eager: false,
-        }
+        };
+        page.init_choices(cx);
+        page
     }
     fn build(clipped: bool, shadow: bool, cx: &Context<Self>) -> anyhow::Result<Asset> {
         Self::from_bytes(&cx.svg_renderer(), scene::svg(clipped, shadow).into_bytes(), None)
@@ -231,8 +343,20 @@ impl SvgPage {
         self.active_tab = tab;
         cx.notify();
     }
+    fn reset_scheduler(&mut self) {
+        self.scheduler =
+            SvgScheduler::new(SchedulerLimits { max_jobs: self.jobs, max_bytes: [16, 32, 64][self.pool_index] * MIB });
+    }
     fn action(&mut self, action: Action, cx: &mut Context<Self>) {
         match action {
+            Action::ScalingBudget
+            | Action::Preview
+            | Action::Settle
+            | Action::Budget
+            | Action::Jobs
+            | Action::Pool
+            | Action::Tiles
+            | Action::Dash => unreachable!("selector setting"),
             Action::Zoom1 | Action::Zoom2 | Action::Zoom4 | Action::Zoom8 | Action::Zoom16 | Action::DevicePixels => {
                 let zoom = match action {
                     Action::Zoom2 => 2.,
@@ -243,26 +367,6 @@ impl SvgPage {
                     _ => 1.,
                 };
                 self.zoom_at(gpui::point(gpui::px(0.), gpui::px(0.)), zoom / self.camera.zoom, cx);
-            }
-            Action::ScalingBudget => {
-                let budgets = [MIB / 4, MIB, 4 * MIB, 16 * MIB, 32 * MIB];
-                let index = budgets.iter().position(|budget| *budget == self.policy.max_output_bytes).unwrap_or(3);
-                self.policy.max_output_bytes = budgets[(index + 1) % budgets.len()];
-            }
-            Action::Preview => {
-                self.policy.preview_edge = match self.policy.preview_edge {
-                    128 => 320,
-                    320 => 640,
-                    _ => 128,
-                }
-            }
-            Action::Settle => {
-                self.policy.settle_delay =
-                    std::time::Duration::from_millis(match self.policy.settle_delay.as_millis() {
-                        50 => 120,
-                        120 => 300,
-                        _ => 50,
-                    })
             }
             Action::Open => self.open_svg(cx),
             Action::Gallery => self.open_gallery(cx),
@@ -303,34 +407,6 @@ impl SvgPage {
                 self.rendering_status = None;
             }
             Action::Background => self.dark = !self.dark,
-            Action::Budget => {
-                self.policy.max_output_bytes = if self.policy.max_output_bytes == 16 * MIB {
-                    32 * MIB
-                } else {
-                    16 * MIB
-                }
-            }
-            Action::Jobs | Action::Pool => {
-                if action == Action::Jobs {
-                    self.jobs = if self.jobs == 4 { 1 } else { self.jobs * 2 };
-                } else {
-                    self.pool_index = (self.pool_index + 1) % 3;
-                }
-                self.scheduler = SvgScheduler::new(SchedulerLimits {
-                    max_jobs: self.jobs,
-                    max_bytes: [16, 32, 64][self.pool_index] * MIB,
-                });
-            }
-            Action::Tiles => {
-                self.tiles = match self.tiles {
-                    6 => 12,
-                    12 => 24,
-                    24 => 48,
-                    48 => 96,
-                    _ => 6,
-                }
-            }
-            Action::Dash => self.dash = (self.dash + 1) % 4,
             Action::Reset => {
                 if self.active_tab == "Path Effects" {
                     self.animate = false;
@@ -411,8 +487,8 @@ mod tests {
             cx.run_until_parked();
         }
         let pool =
-            cx.update(|_, cx| page.read(cx).buttons.iter().find(|(id, _)| *id == Action::Pool).unwrap().1.clone());
-        pool.update(cx, |_, cx| cx.emit(ButtonEvent::Click));
+            cx.update(|_, cx| page.read(cx).choices.iter().find(|(id, _)| *id == Action::Pool).unwrap().1.clone());
+        cx.update(|_, cx| pool.select(0, cx));
         cx.run_until_parked();
         cx.update(|_, cx| {
             let page = page.read(cx);
@@ -496,10 +572,9 @@ mod tests {
         page.update(cx, |page, cx| {
             page.activate("Scaling".into(), cx);
             page.action(Action::Zoom16, cx);
-            page.action(Action::ScalingBudget, cx); // 32 MiB
-            page.action(Action::ScalingBudget, cx); // 0.25 MiB
-            page.action(Action::Preview, cx);
-            page.action(Action::Settle, cx);
+            page.select_choice(Action::ScalingBudget, 0, cx); // 0.25 MiB
+            page.select_choice(Action::Preview, 0, cx);
+            page.select_choice(Action::Settle, 2, cx);
             let logical = page.asset.as_ref().unwrap().logical;
             let resolution = page.policy.resolution(logical, page.camera.zoom, 2.).unwrap();
             assert!(resolution.limited());

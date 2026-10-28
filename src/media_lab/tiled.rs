@@ -9,6 +9,7 @@ use xgpui_media::pipeline::*;
 
 pub struct TiledDemo {
     buttons: Vec<Entity<gpui_luma::controls::button::Button>>,
+    blur_choice: crate::lab_controls::Choice,
     render_scale: f64,
     canvas: TileCanvas,
     blurs: [ImageBlur; 4],
@@ -35,6 +36,18 @@ impl TiledDemo {
     }
     pub fn new(look: std::sync::Arc<gpui_luma_look_radix::Look>, cx: &mut Context<Self>) -> Self {
         use gpui_luma::prelude::HasPresenter;
+        let blur_choice = crate::lab_controls::Choice::new(
+            "tile-blur",
+            "Blur radius",
+            &look,
+            crate::lab_controls::labels(&["0 px", "4 px", "8 px", "16 px"]),
+            0,
+            cx,
+            |this: &mut Self, index, cx| {
+                this.blur_index = index;
+                cx.notify();
+            },
+        );
         let buttons = [
             "Fit",
             "1:1",
@@ -47,7 +60,6 @@ impl TiledDemo {
             "Replace source",
             "Cancel / Restart",
             "Toggle 2 MiB cache",
-            "Next blur radius",
             "Toggle blur quality",
         ]
         .into_iter()
@@ -56,7 +68,6 @@ impl TiledDemo {
             gpui_luma_look_radix::Button::new(format!("tile-control-{index}"))
                 .look(look.as_ref())
                 .outline()
-                .size(gpui_luma_look_radix::ButtonSize::One)
                 .label(label)
                 .on_click(cx, move |s: &mut Self, cx| {
                     let scale = s.render_scale;
@@ -92,7 +103,6 @@ impl TiledDemo {
                             s.peak_gpu = 0;
                             s.paused = false;
                         }
-                        11 => s.blur_index = (s.blur_index + 1) % 4,
                         _ => {
                             s.full_quality = !s.full_quality;
                             s.blurs = [0., 4., 8., 16.].map(|r| {
@@ -111,6 +121,7 @@ impl TiledDemo {
         .collect();
         Self {
             buttons,
+            blur_choice,
             render_scale: 1.,
             canvas: Self::make_canvas(0, false),
             blurs: [0., 4., 8., 16.].map(|r| ImageBlur::new(px(r)).unwrap()),
@@ -270,7 +281,7 @@ impl Render for TiledDemo {
             .bg(rgb(0x0f172a)).text_color(rgb(0xe2e8f0)).font_family("IBM Plex Sans")
             .child(div().text_xl().child("Progressive tiled canvas · 72 megapixels"))
             .child("12,000 × 6,000 generated source · preview stays visible as selected tiles refine · drag to pan, wheel to zoom")
-            .child(div().flex().flex_wrap().gap_2().children(self.buttons.clone()))
+            .child(div().flex().flex_wrap().gap_2().children(self.buttons.clone()).child(self.blur_choice.clone()))
             .child(format!("Blur {} px · {} quality · Cache {} MiB", [0,4,8,16][self.blur_index], if self.full_quality {"full"} else {"adaptive"}, if self.pressure {2} else {16}))
             .child("Blur runs once over assembled pages: shared tile edges, transparent outside the viewport. Blur uses a bounded preview (1024 device px including halo). Retained sRGB blur targets are additional to page budgets.")
             .child(format!("Generation {} · {:?} · zoom {:.1}% · mip {} · ready {}/{} · cached {}",

@@ -38,6 +38,7 @@ const SAMPLES: [(&str, &str, &str); 4] = [
 ];
 pub struct TypographyDemo {
     buttons: Vec<(Action, String, Entity<Button>)>,
+    choices: Vec<(Action, crate::lab_controls::Choice)>,
     focus_pending: bool,
     samples: Vec<Entity<SelectableText>>,
     active: usize,
@@ -65,7 +66,8 @@ impl TypographyDemo {
             .collect();
         let subscriptions = samples.iter().map(|sample| cx.observe(sample, |_, _, cx| cx.notify())).collect();
         let mut demo = Self {
-            buttons: Self::make_buttons(look, cx),
+            buttons: Self::make_buttons(look.clone(), cx),
+            choices: Self::make_choices(&look, cx),
             focus_pending: false,
             samples,
             active: 0,
@@ -345,9 +347,6 @@ impl TypographyDemo {
             Seed,
             Frame,
             Reduced,
-            Fill,
-            Shadow,
-            Softness,
             SelectAll,
             Copy,
             Width,
@@ -360,7 +359,6 @@ impl TypographyDemo {
                 let button = radix::Button::new(format!("typography-{action:?}"))
                     .look(look.as_ref())
                     .outline()
-                    .size(radix::ButtonSize::One)
                     .label("…")
                     .on_click(cx, move |this: &mut Self, cx| this.action(action, cx))
                     .spawn(cx);
@@ -368,15 +366,60 @@ impl TypographyDemo {
             })
             .collect()
     }
-    fn button(&self, action: Action) -> Entity<Button> {
+    fn make_choices(look: &Look, cx: &mut Context<Self>) -> Vec<(Action, crate::lab_controls::Choice)> {
+        [
+            (Action::Fill, "Fill", crate::lab_controls::labels(&["Native", "Cool gradient", "Warm gradient"])),
+            (Action::Shadow, "Shadow", crate::lab_controls::labels(&["Off", "Glow", "Drop"])),
+            (Action::Softness, "Softness", crate::lab_controls::labels(&["4 px", "8 px", "12 px"])),
+        ]
+        .into_iter()
+        .map(|(action, label, options)| {
+            (
+                action,
+                crate::lab_controls::Choice::new(
+                    format!("typography-{action:?}"),
+                    label,
+                    look,
+                    options,
+                    0,
+                    cx,
+                    move |this: &mut Self, index, cx| {
+                        match action {
+                            Action::Fill => this.fill = index,
+                            Action::Shadow => this.shadow = index,
+                            Action::Softness => this.softness = index,
+                            _ => unreachable!(),
+                        }
+                        this.apply_style(cx);
+                        cx.notify();
+                    },
+                ),
+            )
+        })
+        .collect()
+    }
+    fn button(&self, action: Action) -> AnyElement {
+        if let Some((_, choice)) = self.choices.iter().find(|(key, _)| *key == action) {
+            return choice.clone().into_any_element();
+        }
         self.buttons
             .iter()
             .find(|(key, _, _)| *key == action)
             .expect("registered typography control")
             .2
             .clone()
+            .into_any_element()
     }
     fn sync_buttons(&mut self, reduced: bool, cx: &mut Context<Self>) {
+        for (action, choice) in &self.choices {
+            let (options, index) = match action {
+                Action::Fill => (crate::lab_controls::labels(&["Native", "Cool gradient", "Warm gradient"]), self.fill),
+                Action::Shadow => (crate::lab_controls::labels(&["Off", "Glow", "Drop"]), self.shadow),
+                Action::Softness => (crate::lab_controls::labels(&["4 px", "8 px", "12 px"]), self.softness),
+                _ => unreachable!(),
+            };
+            choice.sync(options, index, cx);
+        }
         for (action, previous, button) in &mut self.buttons {
             let label = match *action {
                 Action::Sample(index) => {
@@ -408,6 +451,7 @@ impl TypographyDemo {
     fn action(&mut self, action: Action, cx: &mut Context<Self>) {
         use self::Action::*;
         match action {
+            Fill | Shadow | Softness => unreachable!("selector setting"),
             Sample(index) => self.choose(index, cx),
             Motion(mode) => {
                 self.motion = mode;
@@ -445,18 +489,6 @@ impl TypographyDemo {
                 self.playing = false;
             }
             Reduced => self.reduced = !self.reduced,
-            Fill => {
-                self.fill = (self.fill + 1) % 3;
-                self.apply_style(cx);
-            }
-            Shadow => {
-                self.shadow = (self.shadow + 1) % 3;
-                self.apply_style(cx);
-            }
-            Softness => {
-                self.softness = (self.softness + 1) % 3;
-                self.apply_style(cx);
-            }
             SelectAll => self.select_all(cx),
             Copy => self.copy(cx),
             Width => self.narrow = !self.narrow,
@@ -489,8 +521,21 @@ mod tests {
         let (page, cx) = app.add_window_view(|_, cx| TypographyDemo::new(crate::theme::default_look(), cx));
         cx.run_until_parked();
         let click = |action, cx: &mut gpui::VisualTestContext| {
-            let button = cx.update(|_, cx| page.read(cx).button(action));
-            button.update(cx, |_, cx| cx.emit(ButtonEvent::Click));
+            cx.update(|_, cx| {
+                let demo = page.read(cx);
+                if let Some((_, choice)) = demo.choices.iter().find(|(key, _)| *key == action) {
+                    let index = match action {
+                        Action::Fill => (demo.fill + 1) % 3,
+                        Action::Shadow => 1,
+                        Action::Softness => 2,
+                        _ => unreachable!(),
+                    };
+                    choice.clone().select(index, cx);
+                } else {
+                    let button = demo.buttons.iter().find(|(key, _, _)| *key == action).unwrap().2.clone();
+                    button.update(cx, |_, cx| cx.emit(ButtonEvent::Click));
+                }
+            });
             cx.run_until_parked();
         };
         click(Action::Sample(2), cx);

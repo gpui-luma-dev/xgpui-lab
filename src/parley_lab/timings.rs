@@ -3,6 +3,7 @@ use anyhow::{Result, ensure};
 use gpui::{PlatformTextSystem, RenderGlyphParams, TextSystem, WindowTextSystem, point, px};
 use std::{collections::HashSet, hint::black_box, sync::Arc, time::Instant};
 
+#[derive(serde::Serialize)]
 pub struct Timing {
     pub layout_first: f64,
     pub layout_warm: f64,

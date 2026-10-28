@@ -2,14 +2,8 @@ use anyhow::{Context, Result};
 use gpui::{Font, FontFallbacks, FontWeight, TextRun, font, rgb};
 use skrifa::{FontRef, MetadataProvider};
 
-pub const PLEX: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../xgpui/gpui/crates/gpui/assets/fonts/ibm-plex-sans/IBMPlexSans-Regular.ttf"
-));
-pub const INTER: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../xgpui/extensions/xgpui-ext/crates/xgpui-parley/tests/fonts/InterVariable.ttf"
-));
+pub const PLEX: &[u8] = include_bytes!("../../assets/samples/fonts/IBMPlexSans-Regular.ttf");
+pub const INTER: &[u8] = include_bytes!("../../assets/samples/fonts/InterVariable.ttf");
 
 pub struct Sample {
     pub label: String,

@@ -13,10 +13,7 @@ pub enum SourceFormat {
 }
 #[cfg(target_os = "macos")]
 impl SourceFormat {
-    const ALL: [Self; 5] = [Self::Bgra, Self::Full601, Self::Video601, Self::Full709, Self::Video709];
-    pub fn next(self) -> Self {
-        Self::ALL[(Self::ALL.iter().position(|f| *f == self).unwrap() + 1) % Self::ALL.len()]
-    }
+    pub(super) const ALL: [Self; 5] = [Self::Bgra, Self::Full601, Self::Video601, Self::Full709, Self::Video709];
     pub fn label(self) -> &'static str {
         match self {
             Self::Bgra => "BGRA8",
@@ -26,7 +23,7 @@ impl SourceFormat {
             Self::Video709 => "NV12 video · BT.709",
         }
     }
-    fn frame(self, index: u64) -> Result<xgpui_media::CoreVideoFrame> {
+    pub(super) fn frame(self, index: u64) -> Result<xgpui_media::CoreVideoFrame> {
         use gpui_apple::custom_draw::core_video::{Nv12Matrix, test_frame, test_nv12_frame};
         match self {
             Self::Bgra => test_frame(320, 180, index),

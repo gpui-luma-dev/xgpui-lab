@@ -70,35 +70,102 @@ pub struct ColorPage {
     position: f64,
     axis: [f64; 2],
     buttons: Vec<(Action, Entity<Button>)>,
+    choices: Vec<(Action, crate::lab_controls::Choice)>,
     sliders: Vec<(Parameter, Slider)>,
+    transparency: gpui_luma::controls::switch::Switch,
 }
 
 impl ColorPage {
+    fn init_choices(&mut self, cx: &mut Context<Self>) {
+        self.choices =
+            [Action::Source, Action::Destination, Action::Preset, Action::Hue, Action::Model, Action::Samples]
+                .into_iter()
+                .map(|action| {
+                    let (label, options, selected) = self.choice_options(action);
+                    let choice = crate::lab_controls::Choice::new(
+                        format!("color_lab-{action:?}"),
+                        label,
+                        &self.look,
+                        options,
+                        selected,
+                        cx,
+                        move |this: &mut Self, index, cx| this.select_choice(action, index, cx),
+                    );
+                    (action, choice)
+                })
+                .collect();
+    }
+    fn sync_choices(&self, cx: &mut gpui::App) {
+        for (action, choice) in &self.choices {
+            let (_, options, selected) = self.choice_options(*action);
+            choice.sync(options, selected, cx);
+        }
+    }
+    fn choice_options(&self, action: Action) -> (&'static str, Vec<String>, usize) {
+        match action {
+            Action::Source => ("Source space", SPACES.iter().map(|s| format!("{s:?}")).collect(), self.source_index),
+            Action::Destination => {
+                ("Destination space", SPACES.iter().map(|s| format!("{s:?}")).collect(), self.destination_index)
+            }
+            Action::Preset => ("Color pair", reference::PRESETS.iter().map(|s| s.to_string()).collect(), self.preset),
+            Action::Hue => ("Hue policy", HUES.iter().map(|s| format!("{s:?}")).collect(), self.hue_index),
+            Action::Model => {
+                ("Interpolation", crate::lab_controls::labels(&["Linear RGB", "Oklab", "Oklch"]), self.model_index)
+            }
+            Action::Samples => {
+                ("Sample count", crate::lab_controls::labels(&["32", "64", "128"]), self.sample_count_index)
+            }
+            _ => unreachable!("action has no selector"),
+        }
+    }
+    fn select_choice(&mut self, action: Action, index: usize, cx: &mut Context<Self>) {
+        match action {
+            Action::Source => {
+                self.source_index = index;
+            }
+            Action::Destination => {
+                self.destination_index = index;
+            }
+            Action::Preset => {
+                self.preset = index;
+            }
+            Action::Hue => {
+                self.hue_index = index;
+            }
+            Action::Model => {
+                self.model_index = index;
+            }
+            Action::Samples => {
+                self.sample_count_index = index;
+            }
+            _ => unreachable!("action has no selector"),
+        }
+
+        cx.notify();
+    }
+
     pub fn new(look: Arc<Look>, cx: &mut Context<Self>) -> Self {
-        let buttons = [
-            (Action::Source, "Next source space"),
-            (Action::Destination, "Next destination space"),
-            (Action::Preset, "Next color pair"),
-            (Action::Mapping, "Toggle clipping / chroma"),
-            (Action::Alpha, "Toggle endpoint alpha"),
-            (Action::Hue, "Next hue policy"),
-            (Action::Model, "Next interpolation"),
-            (Action::Samples, "Next sample count"),
-            (Action::Reset, "Reset input"),
-        ]
-        .map(|(action, label)| {
-            (
-                action,
-                radix::Button::new(format!("color-lab-{action:?}"))
-                    .look(look.as_ref())
-                    .outline()
-                    .size(radix::ButtonSize::One)
-                    .label(label)
-                    .on_click(cx, move |this: &mut Self, cx| this.action(action, cx))
-                    .spawn(cx),
-            )
-        })
-        .to_vec();
+        let buttons = [(Action::Mapping, "Toggle clipping / chroma"), (Action::Reset, "Reset input")]
+            .map(|(action, label)| {
+                (
+                    action,
+                    radix::Button::new(format!("color-lab-{action:?}"))
+                        .look(look.as_ref())
+                        .outline()
+                        .label(label)
+                        .on_click(cx, move |this: &mut Self, cx| this.action(action, cx))
+                        .spawn(cx),
+                )
+            })
+            .to_vec();
+        let transparency = radix::Switch::new("color-lab-transparency")
+            .look(look.as_ref())
+            .label("Endpoint transparency")
+            .on_value_changed(cx, |this: &mut Self, on, cx| {
+                this.translucent = on;
+                cx.notify();
+            })
+            .spawn(cx);
         let sliders = [
             Parameter::Red,
             Parameter::Green,
@@ -136,7 +203,7 @@ impl ColorPage {
             )
         })
         .to_vec();
-        Self {
+        let mut page = Self {
             look,
             active_tab: "Color Spaces".into(),
             input: [0.2, 0.5, 0.8],
@@ -151,15 +218,19 @@ impl ColorPage {
             position: 0.5,
             axis: [320., 0.],
             buttons,
+            choices: Vec::new(),
+            transparency,
             sliders,
-        }
+        };
+        page.init_choices(cx);
+        page
     }
 
     fn action(&mut self, action: Action, cx: &mut Context<Self>) {
         match action {
-            Action::Source => self.source_index = (self.source_index + 1) % 3,
-            Action::Destination => self.destination_index = (self.destination_index + 1) % 3,
-            Action::Preset => self.preset = (self.preset + 1) % reference::PRESETS.len(),
+            Action::Source | Action::Destination | Action::Preset | Action::Hue | Action::Model | Action::Samples => {
+                unreachable!("selector setting")
+            }
             Action::Mapping => {
                 self.policy = if self.policy == GamutMapping::Clip {
                     GamutMapping::ReduceChroma
@@ -168,9 +239,6 @@ impl ColorPage {
                 }
             }
             Action::Alpha => self.translucent = !self.translucent,
-            Action::Hue => self.hue_index = (self.hue_index + 1) % HUES.len(),
-            Action::Model => self.model_index = (self.model_index + 1) % 3,
-            Action::Samples => self.sample_count_index = (self.sample_count_index + 1) % 3,
             Action::Reset => {
                 self.input = [0.2, 0.5, 0.8];
                 self.position = 0.5;
@@ -216,7 +284,6 @@ impl ColorPage {
 mod tests {
     use super::{Action, ColorPage, Parameter, SPACES};
     use gpui::TestAppContext;
-    use gpui_luma::controls::button::ButtonEvent;
 
     #[test]
     fn color_tabs_render_and_luma_controls_retain_independent_lab_state() {
@@ -233,19 +300,26 @@ mod tests {
         let (source, red, preset) = cx.update(|_, cx| {
             let page = page.read(cx);
             (
-                page.buttons.iter().find(|(action, _)| *action == Action::Source).unwrap().1.clone(),
+                page.choices.iter().find(|(action, _)| *action == Action::Source).unwrap().1.clone(),
                 page.sliders.iter().find(|(parameter, _)| *parameter == Parameter::Red).unwrap().1.clone(),
-                page.buttons.iter().find(|(action, _)| *action == Action::Preset).unwrap().1.clone(),
+                page.choices.iter().find(|(action, _)| *action == Action::Preset).unwrap().1.clone(),
             )
         });
-        source.update(cx, |_, cx| cx.emit(ButtonEvent::Click));
+        let transparency = cx.update(|_, cx| page.read(cx).transparency.clone());
+        transparency.update(cx, |switch, cx| {
+            switch.set_data(true, cx);
+            cx.emit(gpui_luma::controls::switch::SwitchEvent::Change { on: true });
+        });
+        cx.update(|_, cx| source.select(1, cx));
         red.update(cx, |slider, cx| {
             slider.set_thumb_position(slider.primary_thumb_id(), 0.9, cx);
         });
-        preset.update(cx, |_, cx| cx.emit(ButtonEvent::Click));
+        cx.update(|_, cx| preset.select(1, cx));
         cx.run_until_parked();
         cx.update(|_, cx| {
             let page = page.read(cx);
+            assert!(page.translucent);
+            assert!(*page.transparency.read(cx).data());
             assert_eq!(page.source_index, 1);
             assert_eq!(page.preset, 1);
             assert!((page.input[0] - 0.9).abs() < 0.001);

@@ -15,8 +15,8 @@ use std::{hint::black_box, sync::Arc};
 use web_time::Instant;
 
 pub const FONTS: [&[u8]; 2] = [
-    include_bytes!("../../../xgpui/extensions/xgpui-ext/crates/xgpui-parley/tests/fonts/NotoSansArabic.ttf"),
-    include_bytes!("../../../xgpui/extensions/xgpui-ext/crates/xgpui-parley/tests/fonts/NotoSansHebrew.ttf"),
+    include_bytes!("../../assets/samples/fonts/NotoSansArabic.ttf"),
+    include_bytes!("../../assets/samples/fonts/NotoSansHebrew.ttf"),
 ];
 pub(super) const TEXTS: [(&str, &str); 3] = [
     (
@@ -45,7 +45,7 @@ fn start() -> ParagraphPosition {
     ParagraphPosition { byte_index: 0, affinity: TextAffinity::Downstream }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, serde::Serialize)]
 pub struct Timing {
     first: f64,
     warm: f64,
@@ -69,7 +69,7 @@ pub fn measure(system: Arc<TextSystem>, iterations: usize) -> Result<Vec<Timing>
     ensure!((1..=1000).contains(&iterations), "expected 1..=1000 timing iterations");
     let window = WindowTextSystem::new(system.clone());
     let mut results = Vec::new();
-    for (label, text) in TEXTS {
+    for (_, text) in TEXTS {
         let runs = runs(text, &system);
         let now = Instant::now();
         let first = window.layout_paragraph(text.into(), px(24.0), &runs, px(320.0))?;
@@ -91,18 +91,17 @@ pub fn measure(system: Arc<TextSystem>, iterations: usize) -> Result<Vec<Timing>
             reflow.push(micros(now));
         }
         let timing = Timing { first: first_time, warm: median(warm), reflow: median(reflow) };
-        println!("Paragraph {label}: {}", timing.label());
+
         results.push(timing);
     }
-    println!(
-        "24px; first request per source at 320px, shared backend state; warm median exact Arc cache hit; reflow median distinct widths 180 + i*0.1px. Font resolution excluded. CPU only, no raster/GPU/frame timing. Diagnostic cache is separate from the UI."
-    );
+
     Ok(results)
 }
 
 pub struct ParagraphLab {
     engine: Arc<super::Engine>,
     buttons: Vec<gpui::Entity<gpui_luma::controls::button::Button>>,
+    sample_choice: crate::lab_controls::Choice,
     look: Arc<gpui_luma_look_radix::Look>,
     raster: Option<(String, Pixels, f32, Arc<gpui::RenderImage>)>,
     raster_error: Option<String>,
@@ -129,36 +128,43 @@ impl ParagraphLab {
         cx: &mut Context<Self>,
     ) -> Self {
         use gpui_luma::prelude::HasPresenter;
-        let buttons = ["Next sample (reset)", "Narrow / Wide"]
-            .into_iter()
-            .enumerate()
-            .map(|(index, label)| {
-                gpui_luma_look_radix::Button::new(format!("paragraph-control-{index}"))
-                    .look(look.as_ref())
-                    .outline()
-                    .label(label)
-                    .on_click(cx, move |this: &mut Self, cx| {
-                        if index == 0 {
-                            this.sample = (this.sample + 1) % TEXTS.len();
-                            this.content = TEXTS[this.sample].1.to_owned();
-                            this.marked = None;
-                            this.preferred_x = None;
-                            this.reveal_caret = false;
-                            this.anchor = start();
-                            this.caret = start();
-                        } else {
-                            this.wide = !this.wide;
-                        }
-                        this.geometry = None;
-                        this.dragging = false;
-                        cx.notify();
-                    })
-                    .spawn(cx)
-            })
-            .collect();
+        let sample_choice = crate::lab_controls::Choice::new(
+            "text-paragraph-sample",
+            "Sample",
+            &look,
+            TEXTS.iter().map(|(label, _)| label.to_string()).collect(),
+            0,
+            cx,
+            |this: &mut Self, index, cx| {
+                this.sample = index;
+                this.content = TEXTS[index].1.to_owned();
+                this.marked = None;
+                this.preferred_x = None;
+                this.reveal_caret = false;
+                this.anchor = start();
+                this.caret = start();
+                this.geometry = None;
+                this.dragging = false;
+                cx.notify();
+            },
+        );
+        let buttons = vec![
+            gpui_luma_look_radix::Button::new("paragraph-control-width")
+                .look(look.as_ref())
+                .outline()
+                .label("Narrow / Wide")
+                .on_click(cx, |this: &mut Self, cx| {
+                    this.wide = !this.wide;
+                    this.geometry = None;
+                    this.dragging = false;
+                    cx.notify();
+                })
+                .spawn(cx),
+        ];
         Self {
             engine,
             buttons,
+            sample_choice,
             look,
             raster: None,
             raster_error: None,
@@ -317,7 +323,7 @@ impl Render for ParagraphLab {
             }))
             .child("Click/drag to select. Left/Right move visually; Shift extends selection.")
             .child("Type or use IME; Enter adds a line break. Clipboard shortcuts and grapheme deletion.")
-            .child(div().flex().gap_3().children(self.buttons.clone()))
+            .child(div().flex().gap_3().children(self.buttons.clone()).child(self.sample_choice.clone()))
             .child(format!("{label} | width {:.0}px", f32::from(width)))
             .child(format!(
                 "Seed: {}",
@@ -537,7 +543,7 @@ mod tests {
             assert!(!layout.selection_bounds(state.anchor, state.caret).unwrap().is_empty());
         });
         visual.update(|_, cx| {
-            let button = lab.read(cx).buttons[1].clone();
+            let button = lab.read(cx).buttons[0].clone();
             button.update(cx, |_, cx| cx.emit(gpui_luma::controls::button::ButtonEvent::Click));
         });
         visual.run_until_parked();
@@ -548,8 +554,8 @@ mod tests {
             assert!(state.geometry.as_ref().unwrap().1.size().height < layout.size().height);
         });
         visual.update(|_, cx| {
-            let button = lab.read(cx).buttons[0].clone();
-            button.update(cx, |_, cx| cx.emit(gpui_luma::controls::button::ButtonEvent::Click));
+            let choice = lab.read(cx).sample_choice.clone();
+            choice.select(1, cx);
         });
         visual.run_until_parked();
         draw(&mut visual);

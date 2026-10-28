@@ -16,7 +16,6 @@ impl GradientBuilder {
         let add = crate::theme::icon_button("color-viz-freeform-add", LucideIcon::Plus)
             .look(&self.look)
             .content_only()
-            .size(radix::ButtonSize::One)
             .spawn(cx)
             .tooltip(Tooltip::new("Add point"), cx);
         self._subscriptions.push(cx.subscribe(&add, |this, _, event: &ButtonEvent, cx| {
@@ -28,7 +27,6 @@ impl GradientBuilder {
         let shuffle = crate::theme::icon_button("color-viz-freeform-shuffle", LucideIcon::Shuffle)
             .look(&self.look)
             .content_only()
-            .size(radix::ButtonSize::One)
             .spawn(cx)
             .tooltip(Tooltip::new("Randomize all point positions"), cx);
         self._subscriptions.push(cx.subscribe(&shuffle, |this, _, event: &ButtonEvent, cx| {
@@ -44,7 +42,6 @@ impl GradientBuilder {
                     let button = crate::theme::icon_button(format!("color-viz-point-{point_index}-{action}"), icon)
                         .look(&self.look)
                         .content_only()
-                        .size(radix::ButtonSize::One)
                         .spawn(cx)
                         .tooltip(Tooltip::new(label), cx);
                     self._subscriptions.push(cx.subscribe(&button, move |this, _, event: &ButtonEvent, cx| {

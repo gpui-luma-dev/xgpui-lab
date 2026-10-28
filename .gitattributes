@@ -1,0 +1,3 @@
+# Corpus hashes identify the original artwork bytes. Windows checkouts must not
+# rewrite line endings before these fixtures are embedded or verified.
+assets/samples/svg/*.svg -text

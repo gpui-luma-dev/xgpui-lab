@@ -1,7 +1,8 @@
 #![windows_subsystem = "windows"]
 
 mod app;
-mod validation;
+mod lab_controls;
+mod benchmarks;
 
 mod app_shell;
 mod compositions;
@@ -42,6 +43,58 @@ fn main() {
                 "source"
             }
         );
+        return;
+    }
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(backend) = benchmarks::argument(&args, "--text-benchmark-backend") {
+        let result = (|| -> anyhow::Result<()> {
+            parley_lab::native::benchmark(
+                backend,
+                benchmarks::argument(&args, "--text-benchmark-mode").unwrap_or("cpu"),
+                std::path::Path::new(
+                    benchmarks::argument(&args, "--output")
+                        .ok_or_else(|| anyhow::anyhow!("output directory required"))?,
+                ),
+            )
+        })();
+        if let Err(error) = result {
+            eprintln!("Text benchmark: {error:#}");
+            std::process::exit(1);
+        }
+        return;
+    }
+    if args.iter().any(|arg| arg == "--svg-case") {
+        if let Err(error) = svg_lab::benchmarks::run_case_cli(&args) {
+            eprintln!("SVG benchmark: {error:#}");
+            std::process::exit(1);
+        }
+        return;
+    }
+    for (flag, suite) in [
+        ("--parley-benchmark", benchmarks::Suite::Parley),
+        ("--shader-benchmark", benchmarks::Suite::Shader),
+        ("--svg-benchmark", benchmarks::Suite::Svg),
+    ] {
+        if args.iter().any(|arg| arg == flag) {
+            if let Err(error) = benchmarks::run_cli(&args, suite, flag) {
+                eprintln!("Benchmark: {error:#}");
+                std::process::exit(1);
+            }
+            return;
+        }
+    }
+    if args.iter().any(|arg| arg == "--media-benchmark") {
+        if let Err(error) = media_lab::benchmarks::run_cli(&args) {
+            eprintln!("Media benchmark: {error:#}");
+            std::process::exit(1);
+        }
+        return;
+    }
+    if args.iter().any(|arg| arg == "--gamut-benchmark") {
+        if let Err(error) = gamut::benchmarks::run_cli(&args) {
+            eprintln!("Gamut benchmark: {error:#}");
+            std::process::exit(1);
+        }
         return;
     }
     if let Some(backend) =

@@ -11,8 +11,8 @@ use crate::theme::ColorVizLookExt;
 /// An extension's navigation and lab content, independent of the original demos.
 pub struct ExtensionPane {
     look: Arc<Look>,
-    validation: Option<Entity<crate::validation::ValidationPage>>,
-    validation_active: bool,
+    benchmarks: Option<Entity<crate::benchmarks::Page>>,
+    benchmarks_active: bool,
     tabs: Entity<Tabs>,
     tab_width: f32,
     tab_scroll: gpui::ScrollHandle,
@@ -86,23 +86,19 @@ impl ExtensionPane {
         let parley =
             (id == "xgpui-parley-tabs").then(|| cx.new(|cx| crate::parley_lab::ParleyPage::new(look.clone(), cx)));
         let suite = match id {
-            "xgpui-media-tabs" => Some(crate::validation::Suite::Media),
-            "xgpui-parley-tabs" => Some(crate::validation::Suite::Parley),
-            "xgpui-shader-tabs" => Some(crate::validation::Suite::Shader),
-            "xgpui-gamut-tabs" => Some(crate::validation::Suite::Gamut),
-            "xgpui-svg-tabs" => Some(crate::validation::Suite::Svg),
+            "xgpui-parley-tabs" => Some(crate::benchmarks::Suite::Parley),
+            "xgpui-shader-tabs" => Some(crate::benchmarks::Suite::Shader),
+            "xgpui-svg-tabs" => Some(crate::benchmarks::Suite::Svg),
             _ => None,
         };
-        let validation =
-            suite.map(|suite| cx.new(|cx| crate::validation::ValidationPage::new(suite, look.clone(), cx)));
+        let benchmarks = suite.map(|suite| cx.new(|cx| crate::benchmarks::Page::new(suite, look.clone(), cx)));
         let subscription = cx.subscribe(&tabs, |this, _, event: &TabsEvent, cx| {
             if let TabsEvent::Activate { tab_id, .. } = event {
-                this.validation_active = tab_id == "Validation";
+                this.benchmarks_active = tab_id == "Benchmarks" && this.benchmarks.is_some();
                 cx.notify();
                 if let Some(gamut) = &this.gamut {
                     gamut.update(cx, |page, cx| {
-                        page.active_tab = tab_id.clone();
-                        cx.notify();
+                        page.activate(tab_id.clone(), cx);
                     });
                 }
                 if let Some(media) = &this.media {
@@ -130,8 +126,8 @@ impl ExtensionPane {
             tab_scroll,
             scroll_buttons,
             look,
-            validation,
-            validation_active: false,
+            benchmarks,
+            benchmarks_active: false,
             tabs,
             gamut,
             shader,
@@ -180,8 +176,8 @@ impl Render for ExtensionPane {
                 div()
                     .flex_1()
                     .min_h_0()
-                    .when(self.validation_active, |view| view.children(self.validation.clone()))
-                    .when(!self.validation_active, |view| {
+                    .when(self.benchmarks_active, |view| view.children(self.benchmarks.clone()))
+                    .when(!self.benchmarks_active, |view| {
                         view.children(self.gamut.clone())
                             .children(self.shader.clone())
                             .children(self.color.clone())
