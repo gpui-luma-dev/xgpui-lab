@@ -1,0 +1,60 @@
+XGPUI Lab incorporates application source from gpui-luma-color-viz,
+commit 623c723097c5fd88219d9d3ebb73fa22d6d64287.
+The original source is licensed under Apache-2.0; see LICENSE-APACHE.
+The application name and local dependency configuration have been adapted
+for xgpui-lab. The original color screens are retained.
+
+Gamut lab content is adapted from xgpui/apps/gamut-lab/src/main.rs,
+xgpui/apps/gamut-lab/src/color_main.rs, and the shared CPU references in
+xgpui/apps/extensions-web/src/color_samples.rs at commit
+73262f80be7e2b9bb8fa5cdc333f1bb3e7421b9e (Apache-2.0).
+The shared reference import and application controls were adapted for this app.
+Copyright 2022 - 2025 Zed Industries, Inc.
+
+Shader content is adapted from xgpui/apps/paint-lab/src/editor.rs,
+main.rs, brushes.rs, portable.rs, shaders/portable-wash.wgsl, and
+xgpui/apps/shader-examples/src/examples.rs and minimal.wgsl at commit
+73262f80be7e2b9bb8fa5cdc333f1bb3e7421b9e (Apache-2.0).
+Editor models and shader sources are retained; navigation and interaction
+controls are adapted to Luma. Standalone app launchers are not included.
+
+Color views adapt xgpui/apps/extensions-web/src/color.rs and the shared
+color_samples.rs references, together with xgpui-color's documented conversion,
+mapping and CPU-gradient examples at commit
+73262f80be7e2b9bb8fa5cdc333f1bb3e7421b9e (Apache-2.0).
+Controls are adapted to Luma; all Color preview swatches are explicitly sRGB.
+
+Media fixtures and the generated BGRA/NV12 source are adapted from
+xgpui/apps/media-lab/src/{fixtures,video_lab,model,ui}.rs.
+SVG scene geometry and rendering comparisons are adapted from
+xgpui/apps/svg-lab/src/{scene,main,gallery,benchmark}.rs; path-effect fixtures
+and panels are adapted from xgpui/apps/media-lab/src/paths.rs.
+Source revision: 73262f80be7e2b9bb8fa5cdc333f1bb3e7421b9e (Apache-2.0).
+Application navigation and controls are adapted to Luma. The embedded gallery
+uses the original ribbon/leaf scene, without the third-party artwork corpus.
+
+Restored Media modes also adapt media-lab/src/float_lab.rs and the shared
+apps/web-support/tiled_demo.rs. SVG camera gestures adapt svg-lab/src/camera.rs
+at the same source revision and license. External gallery artwork is loaded
+from user-selected files; no additional artwork corpus is distributed.
+
+Parley pages adapt xgpui/apps/text-lab/src/{samples,timings,paragraph}.rs
+and paragraph/input.rs at revision 73262f80be7e2b9bb8fa5cdc333f1bb3e7421b9e
+(Apache-2.0). The editor retains source selection, BiDi navigation, clipboard,
+grapheme editing and UTF-16 IME handling. Controls use Luma; Parley font IDs
+and raster previews are isolated from the shell's native text backend.
+Embedded IBM Plex, Inter Variable and Noto Arabic/Hebrew font fixtures are
+licensed under the SIL Open Font License; see licenses/fonts/.
+
+Shader Typography adapts xgpui/apps/shader-examples/src/typography.rs at
+revision 73262f80be7e2b9bb8fa5cdc333f1bb3e7421b9e (Apache-2.0). The original
+xgpui-shader SelectableText entities, styling and motion effects are retained;
+controls are adapted to Luma and animation is paused when the pane is left.
+
+Restored brush/effect galleries and Hermite controls also adapt
+paint-lab/src/{brushes,hermite_editor,mesh_tangent}.rs; shadow and border
+comparisons adapt shader-examples/src/shadows.rs. Native text diagnostics
+and scrolling workloads adapt text-lab/src/workload.rs. Source revision:
+73262f80be7e2b9bb8fa5cdc333f1bb3e7421b9e (Apache-2.0).
+Interactive application controls are adapted to Luma. Validation launches
+the original source lab workers from the selected sibling checkout.
