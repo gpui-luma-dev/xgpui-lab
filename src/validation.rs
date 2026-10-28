@@ -498,11 +498,19 @@ mod tests {
         std::fs::write(output.path().join("raw.json"), r#"{"cases":[{"exit_code":0}]}"#).unwrap();
         verify_reports(output.path()).unwrap();
     }
+    // Reuse the Rust test executable instead of an OS-specific sleep command.
+    #[::core::prelude::v1::test]
+    fn cancellation_fixture_child() {
+        if std::env::var_os("XGPUI_CANCELLATION_FIXTURE").as_deref() == Some(std::ffi::OsStr::new("1")) {
+            std::thread::sleep(Duration::from_secs(30));
+        }
+    }
     #[::core::prelude::v1::test]
     fn cancelled_worker_is_reaped() {
         let output = tempfile::tempdir().unwrap();
-        let mut command = Command::new("/bin/sleep");
-        command.arg("30");
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command.args(["--exact", "validation::tests::cancellation_fixture_child", "--nocapture"]);
+        command.env("XGPUI_CANCELLATION_FIXTURE", "1");
         let started = Instant::now();
         assert!(run(command, output.path(), &AtomicBool::new(true), None).is_err());
         assert!(started.elapsed() < Duration::from_secs(5));

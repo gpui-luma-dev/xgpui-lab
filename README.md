@@ -49,7 +49,59 @@ cargo test --locked --all-targets --features test-support
 cargo clippy --locked --all-targets --features test-support -- -D warnings
 ```
 
-Add `--offline` to Cargo build/test/check commands when dependencies are cached. The existing `justfile` also exposes build/run/check recipes; its broad formatting recipe will be tightened during cleanup.
+Add `--offline` to Cargo build/test/check commands when dependencies are cached. The `justfile` exposes the same application-scoped build/run/check recipes.
+
+## Continuous integration
+
+The `CI` workflow runs on pull requests, pushes to `main`, and manual dispatch.
+Its stable check names are **Native (macOS)** and **Native (Windows x64)**.
+Each job checks formatting, compiles all app targets with test support, runs
+Clippy with warnings denied, and executes the headless test suite. Linux CI
+and distributable packaging are separate follow-up work.
+
+CI checks out three sibling folders under the runner workspace: `app/`
+(this repository), `xgpui/`, and `gpui-luma/`. Exact dependency commits live in
+`.github/dependencies.json`. No crates.io publication of xgpui is required.
+The pinned Luma revision still targets gpui-unofficial, so CI applies the
+tracked `.github/patches/gpui-luma-xgpui.patch` to its fresh checkout. This
+bridge selects the sibling xgpui GPUI/platform dependencies and is included
+in the cache identity. It does not depend on uncommitted developer edits.
+Remove the bridge when a tested upstream Luma revision supports xgpui directly.
+
+The reusable `.github/actions/prepare-dependencies` action expects the app at
+`app/` and can also be used by the future manual Windows builder (#5).
+Python 3.13 and Git must be installed before calling it. Preparation verifies
+the exact SHAs and refuses dirty sibling trees; run it only in disposable
+checkouts, not over a working development environment. Pin updates must include
+any necessary bridge/lockfile changes and pass both native jobs.
+
+Hosted jobs install Rust stable, rustfmt, and Clippy. macOS requires Xcode and
+the Metal compiler (downloaded if absent); Windows requires MSVC and the Windows
+SDK resource compiler supplied by the runner image. Cargo fetches dependencies
+on a cold runner rather than assuming an offline developer cache. Native caches
+are separated by target, Rust compiler identity, dependency pins/patch, lockfile,
+and toolchain selection. Superseded runs are cancelled; jobs time out after one hour.
+
+CI uploads command logs, exit statuses, durations, and resolved source/compiler
+versions as seven-day workflow artifacts, including completed diagnostics on
+failed runs. It does not open native windows, run the full interactive benchmark
+suite, establish GPU/physical-P3 parity, or package/release the app. The current
+generated video source is macOS-only and reports that limitation on other platforms.
+Windows native rendering and packaging still need separate smoke testing.
+
+To reproduce the workflow commands from a prepared app checkout:
+
+```sh
+python -m unittest discover -s .github/scripts -p 'test_*.py' -v
+python .github/scripts/check.py format
+python .github/scripts/check.py compile
+python .github/scripts/check.py clippy
+python .github/scripts/check.py test
+```
+
+These commands save logs in `artifacts/ci/` and return the underlying Cargo
+exit status. The portable worker cancellation fixture uses the Rust test
+executable itself instead of `/bin/sleep`.
 
 ## Status and follow-up
 

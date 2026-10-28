@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Native (${{ matrix.name }})
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-15
+            target: aarch64-apple-darwin
+          - name: Windows x64
+            os: windows-2025
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: app
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: '0'
+      # CI tests behavior, not optimized rendering performance.
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_DEV_SPLIT_DEBUGINFO: 'off'
+      CARGO_PROFILE_DEV_OPT_LEVEL: '0'
+      CARGO_PROFILE_DEV_PACKAGE_GPUI_OPT_LEVEL: '0'
+      CARGO_PROFILE_DEV_PACKAGE_GPUI_PLATFORM_OPT_LEVEL: '0'
+      CARGO_PROFILE_DEV_PACKAGE_GPUI_LUMA_OPT_LEVEL: '0'
+      CARGO_PROFILE_DEV_PACKAGE_XGPUI_LAB_OPT_LEVEL: '0'
+    steps:
+      - name: Check out app
+        uses: actions/checkout@v5
+        with:
+          path: app
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Prepare pinned source dependencies
+        id: dependencies
+        uses: ./app/.github/actions/prepare-dependencies
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: ${{ matrix.target }}
+      - name: Prepare macOS Metal toolchain
+        if: runner.os == 'macOS'
+        run: |
+          xcodebuild -version
+          if ! xcrun metal --version; then
+            xcodebuild -downloadComponent MetalToolchain
+          fi
+          xcrun --find metal
+          xcrun --find metallib
+      - name: Verify Windows native toolchain
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $sdk = Get-ChildItem "${env:ProgramFiles(x86)}/Windows Kits/10/bin/*/x64/rc.exe" | Select-Object -Last 1
+          if (-not $sdk) { throw "Windows SDK resource compiler is required" }
+          Write-Output "Windows SDK resource compiler: $($sdk.FullName)"
+      - name: Set up Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app -> target
+          key: native-${{ matrix.target }}-${{ steps.dependencies.outputs.cache-key }}
+      - name: Record build environment
+        run: |
+          mkdir -p artifacts/ci
+          {
+            git rev-parse HEAD
+            git -C ../xgpui rev-parse HEAD
+            git -C ../gpui-luma rev-parse HEAD
+            rustc -Vv
+            cargo -V
+          } | tee artifacts/ci/environment.log
+      - name: Test CI orchestration
+        run: python -m unittest discover -s .github/scripts -p 'test_*.py' -v
+      - name: Check formatting
+        run: python .github/scripts/check.py format
+      - name: Compile all targets with test support
+        run: python .github/scripts/check.py compile
+      - name: Clippy
+        run: python .github/scripts/check.py clippy
+      - name: Run headless tests
+        run: python .github/scripts/check.py test
+      - name: Verify Cargo.lock was not modified
+        run: git diff --exit-code -- Cargo.lock
+      - name: Upload CI diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-${{ matrix.target }}-${{ github.run_attempt }}
+          path: app/artifacts/ci/
+          if-no-files-found: warn
+          retention-days: 7
