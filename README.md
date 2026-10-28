@@ -103,15 +103,6 @@ These commands save logs in `artifacts/ci/` and return the underlying Cargo
 exit status. The portable worker cancellation fixture uses the Rust test
 executable itself instead of `/bin/sleep`.
 
-## Status and follow-up
-
-This is a functional integration baseline, not the final polished product. The initial verification includes 60 passing tests, a development build, Clippy, selected native rendering/interaction checks, and an isolated source SVG benchmark. It does not establish complete performance or browser parity.
-
-- [#1: Deep cleanup and consistent UI polish](https://github.com/gpui-luma-dev/xgpui-lab/issues/1)
-- [#2: Lab-code ownership and WASM website migration boundaries](https://github.com/gpui-luma-dev/xgpui-lab/issues/2)
-
-Lab extraction has not been performed. The existing xgpui website still imports some lab source directly and packages lab assets; moving those files needs a coordinated migration. Neither follow-up issue is completed by this initial snapshot.
-
 ## Source attribution
 
 The adapted application and lab source is covered by `LICENSE-APACHE` and documented in `NOTICE`. Font licenses are in `licenses/fonts/`. The repository's original MIT license is retained in `LICENSE`.
