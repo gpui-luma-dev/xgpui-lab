@@ -1,9 +1,8 @@
 name: CI
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  # Automatic checks are paused until xgpui publication/distribution settles
+  # the GPUI dependency source. Keep the checks available for explicit runs.
   workflow_dispatch:
 
 permissions:

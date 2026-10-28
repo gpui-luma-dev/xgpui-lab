@@ -79,7 +79,7 @@ Add `--offline` to Cargo build/test/check commands when dependencies are cached.
 
 ## Continuous integration
 
-The `CI` workflow runs on pull requests, pushes to `main`, and manual dispatch.
+Automatic `CI` runs are paused while xgpui publication/distribution and the GPUI dependency source are being settled. The workflow retains manual dispatch for explicit verification once enabled; PR and push triggers are removed.
 Its stable check names are **Native (macOS)** and **Native (Windows x64)**.
 Each job checks formatting, compiles all app targets with test support, runs
 Clippy with warnings denied, and executes the headless test suite. Linux CI remains follow-up work; distributable Windows archives use the
