@@ -91,6 +91,8 @@ impl XgpuiLabApp {
                     "Mesh Editor",
                     "Gradient Paints",
                     "WGSL Paints",
+                    "Shader Depot: Grid",
+                    "Shadertoy: Seascape",
                     "Instancing",
                     "Typography",
                     "Brushes",

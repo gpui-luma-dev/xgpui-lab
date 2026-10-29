@@ -6,32 +6,36 @@ license = "Apache-2.0"
 publish = false
 
 [features]
+# Opt-in app-side Metal/wgpu parity validation for the Grid sample.
+grid-wgpu = ["dep:gpui-wgpu", "xgpui-shader/wgpu"]
 # Headless exposition and event-log tests; does not launch XGPUI Lab.
 test-support = ["gpui-luma/test-support"]
 # Identifies the distributable build; embedded benchmarks remain available.
 portable-app = []
 
 [dependencies]
+gpui-wgpu = { package = "xgpui-wgpu", path = "../xgpui/gpui/crates/gpui-wgpu", features = ["test-support"], optional = true }
 libc = "0.2"
+bytemuck = { version = "1", features = ["derive"] }
 sysinfo = { version = "=0.31.4", default-features = false, features = ["system"] }
-xgpui-parley = { path = "../xgpui/extensions/xgpui-ext/crates/xgpui-parley", features = ["system-fonts"] }
+xgpui-parley = { path = "../xgpui/extensions/crates/xgpui-parley", features = ["system-fonts"] }
 parley = { version = "=0.12.0", default-features = false, features = ["std", "complex-scripts"] }
 skrifa = "=0.44.0"
 unicode-segmentation = "1"
-xgpui-media = { path = "../xgpui/extensions/xgpui-ext/crates/xgpui-media" }
-xgpui-svg = { path = "../xgpui/extensions/xgpui-ext/crates/xgpui-svg" }
+xgpui-media = { path = "../xgpui/extensions/crates/xgpui-media" }
+xgpui-svg = { path = "../xgpui/extensions/crates/xgpui-svg" }
 tempfile = "3"
-xgpui-color = { path = "../xgpui/extensions/xgpui-ext/crates/xgpui-color" }
-xgpui-shader = { path = "../xgpui/extensions/xgpui-ext/crates/xgpui-shader", features = ["portable-shaders"] }
-xgpui-gamut = { path = "../xgpui/extensions/xgpui-ext/crates/xgpui-gamut", features = ["instanced"] }
+xgpui-color = { path = "../xgpui/extensions/crates/xgpui-color" }
+xgpui-shader = { path = "../xgpui/extensions/crates/xgpui-shader", features = ["portable-shaders"] }
+xgpui-gamut = { path = "../xgpui/extensions/crates/xgpui-gamut", features = ["instanced"] }
 anyhow = "1"
 serde_json = "1"
 sha2 = "0.10"
 serde = { version = "1", features = ["derive"] }
-gpui = { path = "../xgpui/gpui/crates/gpui", features = ["profiler", "test-support"] }
+gpui = { package = "xgpui", path = "../xgpui/gpui/crates/gpui", features = ["profiler", "test-support"] }
 gpui-luma = { path = "../gpui-luma/crates/sdk" }
 gpui-luma-color = { path = "../gpui-luma/crates/luma-color" }
-gpui_platform = { package = "gpui-platform", path = "../xgpui/gpui/crates/gpui-platform", features = ["font-kit", "test-support"] }
+gpui_platform = { package = "xgpui-platform", path = "../xgpui/gpui/crates/gpui-platform", features = ["font-kit", "test-support"] }
 image = "0.25"
 gpui-luma-look-radix = { path = "../gpui-luma/crates/look-radix" }
 lucide-svg-static = { package = "lucide-static-svg", version = "1.45.0" }
@@ -54,10 +58,10 @@ opt-level = 2
 [profile.dev.package.xgpui-lab]
 opt-level = 1
 
-[profile.dev.package.gpui]
+[profile.dev.package.xgpui]
 opt-level = 3
 
-[profile.dev.package.gpui-platform]
+[profile.dev.package.xgpui-platform]
 opt-level = 3
 
 [profile.dev.package.smol]
@@ -80,28 +84,20 @@ opt-level = 3
 lto = "thin"
 codegen-units = 1
 
-# Keep the complete xgpui dependency graph on the selected sibling checkout.
+# Use the sibling xgpui framework/backends; supporting crates come from crates.io.
 [patch.crates-io]
-"collections" = { path = "../xgpui/gpui/crates/collections" }
-"derive-refineable" = { path = "../xgpui/gpui/crates/derive-refineable" }
-"gpui" = { path = "../xgpui/gpui/crates/gpui" }
-"gpui-apple" = { path = "../xgpui/gpui/crates/gpui-apple" }
-"gpui-linux" = { path = "../xgpui/gpui/crates/gpui-linux" }
-"gpui-macos" = { path = "../xgpui/gpui/crates/gpui-macos" }
-"gpui-macros" = { path = "../xgpui/gpui/crates/gpui-macros" }
-"gpui-platform" = { path = "../xgpui/gpui/crates/gpui-platform" }
-"gpui-shared-string" = { path = "../xgpui/gpui/crates/gpui-shared-string" }
-"gpui-util" = { path = "../xgpui/gpui/crates/gpui-util" }
-"gpui-web" = { path = "../xgpui/gpui/crates/gpui-web" }
-"gpui-wgpu" = { path = "../xgpui/gpui/crates/gpui-wgpu" }
-"gpui-windows" = { path = "../xgpui/gpui/crates/gpui-windows" }
-"http-client" = { path = "../xgpui/gpui/crates/http-client" }
-"refineable" = { path = "../xgpui/gpui/crates/refineable" }
-"scheduler" = { path = "../xgpui/gpui/crates/scheduler" }
-"sum-tree" = { path = "../xgpui/gpui/crates/sum-tree" }
-"ztracing" = { path = "../xgpui/gpui/crates/ztracing" }
-"ztracing-macro" = { path = "../xgpui/gpui/crates/ztracing-macro" }
-block = { path = "../xgpui/vendor/block" }
+"xgpui" = { path = "../xgpui/gpui/crates/gpui" }
+"xgpui-apple" = { path = "../xgpui/gpui/crates/gpui-apple" }
+"xgpui-linux" = { path = "../xgpui/gpui/crates/gpui-linux" }
+"xgpui-macos" = { path = "../xgpui/gpui/crates/gpui-macos" }
+"xgpui-macros" = { path = "../xgpui/gpui/crates/gpui-macros" }
+"xgpui-platform" = { path = "../xgpui/gpui/crates/gpui-platform" }
+"xgpui-web" = { path = "../xgpui/gpui/crates/gpui-web" }
+"xgpui-wgpu" = { path = "../xgpui/gpui/crates/gpui-wgpu" }
+"xgpui-windows" = { path = "../xgpui/gpui/crates/gpui-windows" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-gpui-apple = { path = "../xgpui/gpui/crates/gpui-apple", features = ["test-support"] }
+objc2 = "0.6"
+objc2-core-foundation = "0.3.2"
+objc2-core-video = "0.3.2"
+gpui-apple = { package = "xgpui-apple", path = "../xgpui/gpui/crates/gpui-apple", features = ["test-support"] }

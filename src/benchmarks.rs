@@ -40,7 +40,9 @@ pub(crate) fn run_self(args: &[String], output: &Path, cancel: &AtomicBool) -> R
     }
     let mut child = command.spawn().context("starting this app's isolated benchmark")?;
     let started = Instant::now();
-    let timeout = if args.iter().any(|arg| arg == "--svg-case") {
+    let timeout = if args.iter().any(|arg| arg == "--lifecycle-worker") {
+        Duration::from_secs(360)
+    } else if args.iter().any(|arg| arg == "--svg-case") {
         Duration::from_secs(600)
     } else {
         Duration::from_secs(120)
@@ -104,6 +106,8 @@ enum Job {
     Paint,
     Mesh,
     Wgsl,
+    Grid,
+    Seascape,
     SvgBuiltin,
     SvgSelected,
     SvgCorpus,
@@ -112,7 +116,7 @@ impl Suite {
     fn jobs(self) -> Vec<Job> {
         match self {
             Self::Parley => vec![Job::TextCpu, Job::NativeScroll, Job::ParleyScroll, Job::Atlas],
-            Self::Shader => vec![Job::Paint, Job::Mesh, Job::Wgsl],
+            Self::Shader => vec![Job::Paint, Job::Mesh, Job::Wgsl, Job::Grid, Job::Seascape],
             Self::Svg => vec![Job::SvgBuiltin, Job::SvgSelected, Job::SvgCorpus],
         }
     }
@@ -127,6 +131,8 @@ impl Job {
             Self::Paint => "paint",
             Self::Mesh => "mesh",
             Self::Wgsl => "wgsl",
+            Self::Grid => "grid",
+            Self::Seascape => "seascape",
             Self::SvgBuiltin => "builtin",
             Self::SvgSelected => "selected",
             Self::SvgCorpus => "corpus",
@@ -141,6 +147,8 @@ impl Job {
             Self::Paint => "Paint coverage checks",
             Self::Mesh => "Mesh checks",
             Self::Wgsl => "WGSL checks",
+            Self::Grid => "Shader Depot Grid · public API parity",
+            Self::Seascape => "Shadertoy Seascape · looped / expanded WGSL",
             Self::SvgBuiltin => "Built-in SVG",
             Self::SvgSelected => "Selected SVG",
             Self::SvgCorpus => "Bundled SVG corpus",
@@ -182,6 +190,8 @@ fn run_job(
         Job::NativeScroll => text_job("native", "scroll", output, cancel),
         Job::ParleyScroll => text_job("parley", "scroll", output, cancel),
         Job::Atlas => text_job("parley", "atlas", output, cancel),
+        Job::Grid => crate::shader::benchmarks::grid_checks::run(output, cancel),
+        Job::Seascape => crate::shader::benchmarks::seascape_checks::run(output, cancel),
         Job::Paint | Job::Mesh | Job::Wgsl => crate::shader::benchmarks::run(job.id(), output, cancel),
         Job::SvgBuiltin => crate::svg_lab::benchmarks::builtin(output, cancel),
         Job::SvgSelected => match selected {

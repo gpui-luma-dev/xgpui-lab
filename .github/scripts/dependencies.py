@@ -24,7 +24,7 @@ def configuration(root=ROOT):
 
 def fingerprint(root=ROOT):
     digest = hashlib.sha256()
-    for name in [".github/dependencies.json", ".github/patches/gpui-luma-xgpui.patch",
+    for name in [".github/dependencies.json", "Cargo.toml",
                  "Cargo.lock", "rust-toolchain.toml"]:
         digest.update(name.encode())
         digest.update((root / name).read_bytes())
@@ -37,7 +37,6 @@ def git(path, *args):
 
 def prepare(root=ROOT):
     pins = configuration(root)
-    patch = root / ".github/patches/gpui-luma-xgpui.patch"
     # This command is intentionally for fresh CI checkouts, not dirty developer trees.
     for name, pin in pins.items():
         checkout = root.parent / name
@@ -45,12 +44,8 @@ def prepare(root=ROOT):
         if actual != pin["revision"]:
             raise ValueError(f"{name}: expected {pin['revision']}, found {actual}")
         if git(checkout, "status", "--porcelain", "--untracked-files=normal"):
-            raise ValueError(f"Refusing to modify a dirty dependency checkout: {checkout}")
+            raise ValueError(f"Unexpected dirty dependency checkout: {checkout}")
         print(f"{name}: {pin['repository']} @ {actual}", flush=True)
-    luma = root.parent / "gpui-luma"
-    subprocess.run(["git", "-C", str(luma), "apply", "--check", str(patch)], check=True)
-    subprocess.run(["git", "-C", str(luma), "apply", str(patch)], check=True)
-    print(f"Applied tracked Luma dependency bridge: {patch.name}", flush=True)
 
 
 def main():

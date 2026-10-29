@@ -1,0 +1,973 @@
+{
+  "schema_version": 1,
+  "assessed_xgpui_revision": "534cdf465615be127480b5add62b2b8df89915dd",
+  "platform": "macOS Apple Silicon; Intel Managed storage and other OSes not validated",
+  "legend": {
+    "V": "Verified specific assertion with named native evidence; not blanket coverage",
+    "P": "Partial or indirect, shared infrastructure, synthetic state, or narrower producer coverage",
+    "G": "Gap: no direct assertion located",
+    "N": "Not applicable to the explicitly stated resource; not a substitute for testing related caches"
+  },
+  "ownership_columns": [
+    "pending",
+    "submitted",
+    "completed",
+    "abandoned",
+    "failed",
+    "renderer_destruction",
+    "window_destruction"
+  ],
+  "reuse_columns": [
+    "replay",
+    "eviction",
+    "resize",
+    "queue_separation",
+    "producer_replacement"
+  ],
+  "evidence": {
+    "AT": {
+      "title": "Atlas odd-width pixels, cache hits, replay, eviction and changed-data reinsertion",
+      "source": "src/media_lab/benchmarks/atlas_checks.rs",
+      "witness": "pub(super) fn verify",
+      "run": "just regression-tests / atlas"
+    },
+    "TX": {
+      "title": "Native/Parley text atlas captures; no glyph pixel oracle",
+      "source": "src/parley_lab/native.rs",
+      "witness": "window.render_to_image()?.save",
+      "run": "capture-only; not counted as glyph correctness"
+    },
+    "SH": {
+      "title": "Native/custom shapes, paths, opacity, clipping and replay pixel comparisons",
+      "source": "src/shader/benchmarks/mod.rs",
+      "witness": "native/custom coverage differs",
+      "run": "shader-pixels"
+    },
+    "SC": {
+      "title": "Solid/gradient/mesh cache: pending sharing, completed reuse, eviction, queue isolation and generation errors",
+      "source": "../xgpui/extensions/crates/xgpui-shader/src/metal_cache/tests.rs",
+      "witness": "all_producers_separate_queues_on_the_same_device",
+      "run": "shader-cache-tests.log"
+    },
+    "WO": {
+      "title": "Owned objc2 texture/command transfer, identity, pending state, submission and queue rejection",
+      "source": "../xgpui/gpui/crates/gpui-apple/src/custom_draw/wide_output_tests.rs",
+      "witness": "objc2_producer_transfers_owned_resources_without_submitting",
+      "run": "apple-tests.log"
+    },
+    "WS": {
+      "title": "Wide SDR float pixels, ordering, coverage, rejected contracts, mode switches and renderer isolation",
+      "source": "../xgpui/gpui/crates/gpui-apple/src/metal_renderer/wide_sdr/tests.rs",
+      "witness": "wide_sdr_invalid_contract_discards_pending_commands_and_recovers",
+      "run": "apple-tests.log"
+    },
+    "CV": {
+      "title": "CoreVideo snapshot ownership through pending sampling and completion (BGRA + four NV12 variants)",
+      "source": "../xgpui/gpui/crates/gpui-apple/src/metal_renderer.rs",
+      "witness": "fn core_video_snapshot_lives_until_sampling_completion",
+      "run": "apple-tests.log"
+    },
+    "CS": {
+      "title": "Native Surface retains cache after renderer destruction; completion releases cache owner",
+      "source": "../xgpui/gpui/crates/gpui-apple/src/metal_renderer.rs",
+      "witness": "fn surface_sampling_retains_cache_after_renderer_destruction",
+      "run": "apple-tests.log"
+    },
+    "VP": {
+      "title": "Custom video exact bars/range/matrix, masks, opacity and import reuse",
+      "source": "src/media_lab/benchmarks/video.rs",
+      "witness": "frame.import_count() == 1",
+      "run": "just regression-tests / video"
+    },
+    "SP": {
+      "title": "Independent native PaintSurface BGRA and colored full-range NV12 pixels, clipping, resize and replay",
+      "source": "src/media_lab/benchmarks/surface.rs",
+      "witness": "Surface replay changed pixels",
+      "run": "just regression-tests / video"
+    },
+    "LC": {
+      "title": "Renderer/window churn, shader sharing, nonblocking atlas/video/Surface retirement, RSS and reference counts",
+      "source": "src/media_lab/benchmarks/lifecycle.rs",
+      "witness": "first.render_scene(&scene, extent)?",
+      "run": "just regression-tests / lifecycle"
+    },
+    "GP": {
+      "title": "Independent CPU reference for wide compositing, alpha, order, masks, overlays and resize",
+      "source": "src/gamut/compositing_checks.rs",
+      "witness": "let expected = linear.map(encode)",
+      "run": "just regression-tests / texture"
+    },
+    "GI": {
+      "title": "Instanced P3 versus typed producer pixels, alpha, replay, resize and default-mode rejection",
+      "source": "../xgpui/extensions/crates/xgpui-gamut/tests/instanced_output.rs",
+      "witness": "wide_instances_match_typed_producers_and_reject_default_mode",
+      "run": "gamut-tests.log"
+    },
+    "WG": {
+      "title": "Portable WGSL parameter/source cache semantics and pixel checks",
+      "source": "src/shader/benchmarks/portable_checks.rs",
+      "witness": "fn verify(",
+      "run": "shader-pixels"
+    },
+    "FR": {
+      "title": "Batch validation, queue/device/extent rejection and state rechecks; not actual GPU faults",
+      "source": "../xgpui/gpui/crates/gpui-apple/src/custom_draw/submission_tests.rs",
+      "witness": "submission_validates_whole_batch_before_committing_any_commands",
+      "run": "apple-tests.log"
+    },
+    "IM": {
+      "title": "GPUI atlas versus dedicated MediaImage captures and upload-count checks",
+      "source": "src/media_lab/benchmarks/atlas.rs",
+      "witness": "capture unexpectedly reuploaded a source",
+      "run": "just regression-tests / atlas"
+    },
+    "OW": {
+      "title": "17 native resource variants: unsubmitted sampling abandonment, gated submission/completion after renderer destruction, CPU preparation rejection and mixed native window teardown",
+      "source": "src/media_lab/benchmarks/ownership.rs",
+      "witness": "pub(super) async fn run(",
+      "run": "just regression-tests / lifecycle / worker/lifecycle/ownership/report.json (51 frame cases + 3 mixed-window cases)"
+    }
+  },
+  "paths": [
+    {
+      "id": "atlas",
+      "path": "Atlas allocation/upload and sprite binding",
+      "migration": "objc2 atlas; temporary legacy binding bridge",
+      "visual": "Exact monochrome/BGRA byte and pixel assertions",
+      "ownership": {
+        "pending": {
+          "status": "V",
+          "evidence": [
+            "AT",
+            "LC",
+            "OW"
+          ]
+        },
+        "submitted": {
+          "status": "V",
+          "evidence": [
+            "LC",
+            "OW"
+          ]
+        },
+        "completed": {
+          "status": "V",
+          "evidence": [
+            "AT",
+            "OW"
+          ]
+        },
+        "abandoned": {
+          "status": "V",
+          "evidence": [
+            "OW"
+          ]
+        },
+        "failed": {
+          "status": "P",
+          "evidence": [
+            "OW"
+          ]
+        },
+        "renderer_destruction": {
+          "status": "V",
+          "evidence": [
+            "LC",
+            "OW"
+          ]
+        },
+        "window_destruction": {
+          "status": "V",
+          "evidence": [
+            "LC",
+            "OW"
+          ]
+        }
+      },
+      "reuse": {
+        "replay": {
+          "status": "V",
+          "evidence": [
+            "AT"
+          ]
+        },
+        "eviction": {
+          "status": "V",
+          "evidence": [
+            "AT"
+          ]
+        },
+        "resize": {
+          "status": "P",
+          "evidence": [
+            "IM"
+          ]
+        },
+        "queue_separation": {
+          "status": "P",
+          "evidence": [
+            "LC"
+          ]
+        },
+        "producer_replacement": {
+          "status": "V",
+          "evidence": [
+            "AT",
+            "LC"
+          ]
+        }
+      },
+      "limits": "Unsubmitted sampling abandonment releases the actual host pool; completion pixels prove atlas textures survive renderer destruction. Atlas upload itself already occurred during fixture preparation. Synthetic masks do not establish glyph raster correctness; Intel Managed storage remains untested."
+    },
+    {
+      "id": "text",
+      "path": "Text/glyph rendering",
+      "migration": "Atlas migrated; text shaping/rasterization and compositor not fully migrated",
+      "visual": "Native/Parley screenshots only",
+      "ownership": {
+        "pending": {
+          "status": "P",
+          "evidence": [
+            "OW"
+          ]
+        },
+        "submitted": {
+          "status": "P",
+          "evidence": [
+            "TX",
+            "OW"
+          ]
+        },
+        "completed": {
+          "status": "P",
+          "evidence": [
+            "TX",
+            "OW"
+          ]
+        },
+        "abandoned": {
+          "status": "P",
+          "evidence": [
+            "OW"
+          ]
+        },
+        "failed": {
+          "status": "P",
+          "evidence": [
+            "OW"
+          ]
+        },
+        "renderer_destruction": {
+          "status": "P",
+          "evidence": [
+            "TX",
+            "OW"
+          ]
+        },
+        "window_destruction": {
+          "status": "V",
+          "evidence": [
+            "TX",
+            "OW"
+          ]
+        }
+      },
+      "reuse": {
+        "replay": {
+          "status": "P",
+          "evidence": [
+            "TX"
+          ]
+        },
+        "eviction": {
+          "status": "P",
+          "evidence": [
+            "AT"
+          ]
+        },
+        "resize": {
+          "status": "G",
+          "evidence": []
+        },
+        "queue_separation": {
+          "status": "G",
+          "evidence": []
+        },
+        "producer_replacement": {
+          "status": "G",
+          "evidence": []
+        }
+      },
+      "limits": "Mixed native windows exercise text/emoji with unpainted, completed and GPU-pending teardown. Shared native pool/atlas ownership is covered indirectly; no isolated glyph-resource weak observer or glyph pixel goldens, fractional coverage, font/size changes."
+    },
+    {
+      "id": "shapes",
+      "path": "Quads, borders, paths and masks",
+      "migration": "Compositor remains metal-rs; migrated atlas bindings can participate in glyph masks",
+      "visual": "Independent native/custom geometry comparisons",
+      "ownership": {
+        "pending": {
+          "status": "V",
+          "evidence": [
+            "SH",
+            "OW"
+          ]
+        },
+        "submitted": {
+          "status": "V",
+          "evidence": [
+            "SH",
+            "OW"
+          ]
+        },
+        "completed": {
+          "status": "V",
+          "evidence": [
+            "SH",
+            "OW"
+          ]
+        },
+        "abandoned": {
+          "status": "V",
+          "evidence": [
+            "OW"
+          ]
+        },
+        "failed": {
+          "status": "P",
+          "evidence": [
+            "FR",
+            "OW"
+          ]
+        },
+        "renderer_destruction": {
+          "status": "V",
+          "evidence": [
+            "LC",
+            "OW"
+          ]
+        },
+        "window_destruction": {
+          "status": "V",
+          "evidence": [
+            "LC",
+            "OW"
+          ]
+        }
+      },
+      "reuse": {
+        "replay": {
+          "status": "V",
+          "evidence": [
+            "SH"
+          ]
+        },
+        "eviction": {
+          "status": "N",
+          "evidence": []
+        },
+        "resize": {
+          "status": "P",
+          "evidence": [
+            "SH"
+          ]
+        },
+        "queue_separation": {
+          "status": "G",
+          "evidence": []
+        },
+        "producer_replacement": {
+          "status": "P",
+          "evidence": [
+            "SH"
+          ]
+        }
+      },
+      "limits": "Native quad and filled path survive renderer destruction with exact interior pixels. Mixed windows include rounded/bordered shapes. CPU preparation rejection is a later custom producer failure, not shape allocation or GPU-error injection; mask cancellation and resize remain separate."
+    },
+    {
+      "id": "images",
+      "path": "Atlas sprites and dedicated MediaImage textures",
+      "migration": "Atlas migrated; dedicated uploads/compositor remain legacy Metal",
+      "visual": "Atlas exact pixels; dedicated image capture/upload checks",
+      "ownership": {
+        "pending": {
+          "status": "V",
+          "evidence": [
+            "IM",
+            "OW"
+          ]
+        },
+        "submitted": {
+          "status": "V",
+          "evidence": [
+            "LC",
+            "OW"
+          ]
+        },
+        "completed": {
+          "status": "V",
+          "evidence": [
+            "IM",
+            "OW"
+          ]
+        },
+        "abandoned": {
+          "status": "V",
+          "evidence": [
+            "OW"
+          ]
+        },
+        "failed": {
+          "status": "P",
+          "evidence": [
+            "IM",
+            "OW"
+          ]
+        },
+        "renderer_destruction": {
+          "status": "V",
+          "evidence": [
+            "LC",
+            "OW"
+          ]
+        },
+        "window_destruction": {
+          "status": "V",
+          "evidence": [
+            "LC",
+            "OW"
+          ]
+        }
+      },
+      "reuse": {
+        "replay": {
+          "status": "V",
+          "evidence": [
+            "AT"
+          ]
+        },
+        "eviction": {
+          "status": "V",
+          "evidence": [
+            "AT"
+          ]
+        },
+        "resize": {
+          "status": "P",
+          "evidence": [
+            "IM"
+          ]
+        },
+        "queue_separation": {
+          "status": "G",
+          "evidence": []
+        },
+        "producer_replacement": {
+          "status": "P",
+          "evidence": [
+            "LC",
+            "IM"
+          ]
+        }
+      },
+      "limits": "Atlas and uploaded dedicated MediaImage have completion pixel oracles and tracked producer release after abandonment/completion/window teardown. Dedicated-image cache eviction, replacement under pressure and cross-renderer reuse remain incomplete."
+    },
+    {
+      "id": "paints",
+      "path": "Custom solid, gradient and mesh paints",
+      "migration": "Producers remain metal-rs; queue retention uses objc2",
+      "visual": "Native alpha/coverage/geometry pixel assertions",
+      "ownership": {
+        "pending": {
+          "status": "V",
+          "evidence": [
+            "SC",
+            "OW"
+          ]
+        },
+        "submitted": {
+          "status": "V",
+          "evidence": [
+            "SC",
+            "OW"
+          ]
+        },
+        "completed": {
+          "status": "V",
+          "evidence": [
+            "SC",
+            "OW"
+          ]
+        },
+        "abandoned": {
+          "status": "V",
+          "evidence": [
+            "WS",
+            "OW"
+          ]
+        },
+        "failed": {
+          "status": "P",
+          "evidence": [
+            "SC",
+            "FR",
+            "OW"
+          ]
+        },
+        "renderer_destruction": {
+          "status": "V",
+          "evidence": [
+            "LC",
+            "OW"
+          ]
+        },
+        "window_destruction": {
+          "status": "V",
+          "evidence": [
+            "LC",
+            "OW"
+          ]
+        }
+      },
+      "reuse": {
+        "replay": {
+          "status": "V",
+          "evidence": [
+            "SH"
+          ]
+        },
+        "eviction": {
+          "status": "V",
+          "evidence": [
+            "SC"
+          ]
+        },
+        "resize": {
+          "status": "V",
+          "evidence": [
+            "SC"
+          ]
+        },
+        "queue_separation": {
+          "status": "V",
+          "evidence": [
+            "SC"
+          ]
+        },
+        "producer_replacement": {
+          "status": "V",
+          "evidence": [
+            "SH"
+          ]
+        }
+      },
+      "limits": "Solid, gradient, mesh and WGSL each verify tracked producer/host-pool retention while sampling is pending and release after abandonment/completion. Mixed-window teardown covers all. CPU preparation rejection is tested; actual GPU-error cleanup is not."
+    },
+    {
+      "id": "shaders",
+      "path": "Portable WGSL and instanced shader programs",
+      "migration": "Compiler/pipelines/compositor remain legacy; shared queue bridge is a migrated dependency",
+      "visual": "WGSL pixels and parameter/source-cache assertions",
+      "ownership": {
+        "pending": {
+          "status": "V",
+          "evidence": [
+            "WG",
+            "OW"
+          ]
+        },
+        "submitted": {
+          "status": "V",
+          "evidence": [
+            "WG",
+            "OW"
+          ]
+        },
+        "completed": {
+          "status": "V",
+          "evidence": [
+            "WG",
+            "OW"
+          ]
+        },
+        "abandoned": {
+          "status": "V",
+          "evidence": [
+            "OW"
+          ]
+        },
+        "failed": {
+          "status": "P",
+          "evidence": [
+            "WG",
+            "FR",
+            "OW"
+          ]
+        },
+        "renderer_destruction": {
+          "status": "V",
+          "evidence": [
+            "LC",
+            "OW"
+          ]
+        },
+        "window_destruction": {
+          "status": "V",
+          "evidence": [
+            "LC",
+            "OW"
+          ]
+        }
+      },
+      "reuse": {
+        "replay": {
+          "status": "V",
+          "evidence": [
+            "WG"
+          ]
+        },
+        "eviction": {
+          "status": "P",
+          "evidence": [
+            "WG"
+          ]
+        },
+        "resize": {
+          "status": "V",
+          "evidence": [
+            "WG"
+          ]
+        },
+        "queue_separation": {
+          "status": "P",
+          "evidence": [
+            "SC"
+          ]
+        },
+        "producer_replacement": {
+          "status": "V",
+          "evidence": [
+            "WG"
+          ]
+        }
+      },
+      "limits": "WGSL paint and instanced shader verify final-owner release after abandonment/completion plus pixels after renderer destruction; native mixed windows include both. Program/pipeline eviction and true cross-queue program reuse remain gaps. No GPU fault injected."
+    },
+    {
+      "id": "wide",
+      "path": "WideColor producer and wide-SDR composition",
+      "migration": "WideColor allocation/encoding migrated to objc2; host compositor still legacy",
+      "visual": "CPU reference, native float-P3 assertions and instanced parity",
+      "ownership": {
+        "pending": {
+          "status": "V",
+          "evidence": [
+            "WO",
+            "OW"
+          ]
+        },
+        "submitted": {
+          "status": "V",
+          "evidence": [
+            "WO",
+            "OW"
+          ]
+        },
+        "completed": {
+          "status": "V",
+          "evidence": [
+            "WO",
+            "OW"
+          ]
+        },
+        "abandoned": {
+          "status": "V",
+          "evidence": [
+            "WS",
+            "OW"
+          ]
+        },
+        "failed": {
+          "status": "P",
+          "evidence": [
+            "WO",
+            "WS",
+            "OW"
+          ]
+        },
+        "renderer_destruction": {
+          "status": "V",
+          "evidence": [
+            "WO",
+            "WS",
+            "OW"
+          ]
+        },
+        "window_destruction": {
+          "status": "V",
+          "evidence": [
+            "LC",
+            "OW"
+          ]
+        }
+      },
+      "reuse": {
+        "replay": {
+          "status": "V",
+          "evidence": [
+            "GP",
+            "GI"
+          ]
+        },
+        "eviction": {
+          "status": "N",
+          "evidence": []
+        },
+        "resize": {
+          "status": "V",
+          "evidence": [
+            "GP",
+            "GI"
+          ]
+        },
+        "queue_separation": {
+          "status": "V",
+          "evidence": [
+            "WO"
+          ]
+        },
+        "producer_replacement": {
+          "status": "P",
+          "evidence": [
+            "GI"
+          ]
+        }
+      },
+      "limits": "WideColor has no producer LRU (N); scratch/pipeline caches are separate. Pending renderer destruction, unsubmitted sampling abandonment and mixed-window teardown now have direct probes. GPU errors and interrupted producer replacement remain untested; physical display fidelity unverified."
+    },
+    {
+      "id": "video",
+      "path": "Custom-draw CoreVideo BGRA/NV12",
+      "migration": "Import device/texture bridge migrated; compositing remains legacy",
+      "visual": "All five format/range/matrix paths checked",
+      "ownership": {
+        "pending": {
+          "status": "V",
+          "evidence": [
+            "CV",
+            "OW"
+          ]
+        },
+        "submitted": {
+          "status": "V",
+          "evidence": [
+            "LC",
+            "OW"
+          ]
+        },
+        "completed": {
+          "status": "V",
+          "evidence": [
+            "CV",
+            "OW"
+          ]
+        },
+        "abandoned": {
+          "status": "V",
+          "evidence": [
+            "OW"
+          ]
+        },
+        "failed": {
+          "status": "P",
+          "evidence": [
+            "FR",
+            "OW"
+          ]
+        },
+        "renderer_destruction": {
+          "status": "V",
+          "evidence": [
+            "LC",
+            "OW"
+          ]
+        },
+        "window_destruction": {
+          "status": "V",
+          "evidence": [
+            "OW"
+          ]
+        }
+      },
+      "reuse": {
+        "replay": {
+          "status": "V",
+          "evidence": [
+            "VP"
+          ]
+        },
+        "eviction": {
+          "status": "P",
+          "evidence": [
+            "LC"
+          ]
+        },
+        "resize": {
+          "status": "V",
+          "evidence": [
+            "VP"
+          ]
+        },
+        "queue_separation": {
+          "status": "P",
+          "evidence": [
+            "LC"
+          ]
+        },
+        "producer_replacement": {
+          "status": "V",
+          "evidence": [
+            "LC"
+          ]
+        }
+      },
+      "limits": "BGRA and all four NV12 range/matrix variants verify pending producer retention and final-owner release after sampling abandonment/completion and mixed-window teardown. Failed import/allocation and same snapshot across two queues remain gaps. Producer preparation may have submitted work before host sampling abandonment."
+    },
+    {
+      "id": "surface",
+      "path": "Native PaintSurface BGRA/full-range NV12",
+      "migration": "Texture bridge migrated; cache ownership fix committed",
+      "visual": "Independent Surface pixels; cache ownership after renderer drop",
+      "ownership": {
+        "pending": {
+          "status": "V",
+          "evidence": [
+            "CS",
+            "OW"
+          ]
+        },
+        "submitted": {
+          "status": "V",
+          "evidence": [
+            "LC",
+            "OW"
+          ]
+        },
+        "completed": {
+          "status": "V",
+          "evidence": [
+            "CS",
+            "OW"
+          ]
+        },
+        "abandoned": {
+          "status": "V",
+          "evidence": [
+            "OW"
+          ]
+        },
+        "failed": {
+          "status": "P",
+          "evidence": [
+            "FR",
+            "OW"
+          ]
+        },
+        "renderer_destruction": {
+          "status": "V",
+          "evidence": [
+            "CS",
+            "LC",
+            "OW"
+          ]
+        },
+        "window_destruction": {
+          "status": "V",
+          "evidence": [
+            "OW"
+          ]
+        }
+      },
+      "reuse": {
+        "replay": {
+          "status": "V",
+          "evidence": [
+            "SP"
+          ]
+        },
+        "eviction": {
+          "status": "P",
+          "evidence": [
+            "LC"
+          ]
+        },
+        "resize": {
+          "status": "V",
+          "evidence": [
+            "SP"
+          ]
+        },
+        "queue_separation": {
+          "status": "G",
+          "evidence": []
+        },
+        "producer_replacement": {
+          "status": "V",
+          "evidence": [
+            "LC"
+          ]
+        }
+      },
+      "limits": "BGRA/full-range NV12 verify host/cache/buffer release after unsubmitted sampling abandonment, completion and CPU preparation rejection, plus mixed-window teardown. Import failure and cross-queue reuse remain gaps; native Surface does not gain custom-video BT.709/video-range support."
+    }
+  ],
+  "release_gates": [
+    {
+      "id": "abandonment",
+      "status": "verified-sampling-scope",
+      "requirement": "51 frame probes cover 17 resource variants across host sampling abandonment, gated completion after renderer destruction and CPU preparation rejection. Abandoned sampling remains NotEnqueued; actual pool/producer/cache/buffer owners release. Producer preparation/upload may already have submitted work. Text is covered through mixed-window/shared-atlas teardown, not isolated glyph cancellation."
+    },
+    {
+      "id": "failed",
+      "status": "partial",
+      "requirement": "Every native resource variant rejects a later CPU producer preparation and checks final-owner release. Actual GPU command Error, allocation and native import failure cleanup remain unverified; no intentional GPU fault is injected."
+    },
+    {
+      "id": "windows",
+      "status": "verified-native-backend",
+      "requirement": "Three mixed-window cases close before painting, after completion and while GPU work is gated. Text, shapes, atlas/dedicated images, WGSL/instanced shaders, wide color, all custom video variants and native Surfaces are included. Test-support submission uses the window renderer with an offscreen target; drawable presentation itself is not asserted."
+    },
+    {
+      "id": "reuse",
+      "status": "partial",
+      "requirement": "Run shader-program, video snapshot and Surface reuse across distinct queues and teardown; strengthen glyph/dedicated-image oracles."
+    },
+    {
+      "id": "consumer",
+      "status": "published-baseline-only",
+      "requirement": "Published registry consumer must build without patches, then repeat against the eventual candidate release. Current 534cdf4 migration/fix is not represented by published 1.0.0."
+    },
+    {
+      "id": "legacy-removal",
+      "status": "not-met",
+      "requirement": "Prove metal/objc/block/cocoa are absent from selected macOS graph when full migration claims their removal."
+    },
+    {
+      "id": "hardware",
+      "status": "gap",
+      "requirement": "Run on Intel Managed storage and appropriate display configurations; timing/RSS baselines must be hardware/profile matched."
+    },
+    {
+      "id": "source-pin",
+      "status": "not-met",
+      "requirement": "CI currently pins 9e6a732110a1fb1cd6b7ff12bf306d95ceb1fb12; align it with the reviewed fix revision 534cdf465615be127480b5add62b2b8df89915dd before relying on CI evidence."
+    },
+    {
+      "id": "automation",
+      "status": "partial",
+      "requirement": "Native benchmark evidence is local/manual. Existing CI uses mocked app tests and manual dispatch; add native hardware execution with retained reports before making it a release gate."
+    }
+  ],
+  "assessment_scope": "Assessed commit plus uncommitted test-support hooks in gpui-apple metal_renderer.rs, gpui platform.rs/window.rs, and gpui-macos window.rs. Production rendering behavior is unchanged; native ownership probes require these hooks."
+}

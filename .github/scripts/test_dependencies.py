@@ -14,7 +14,7 @@ class DependencyContractTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / "app"
-        (self.root / ".github/patches").mkdir(parents=True)
+        (self.root / ".github").mkdir(parents=True)
         self.pins = {}
         for name in ["xgpui", "gpui-luma"]:
             path = self.root.parent / name
@@ -22,7 +22,7 @@ class DependencyContractTests(unittest.TestCase):
             self.run_git(path, "init", "-q")
             self.run_git(path, "config", "user.name", "CI fixture")
             self.run_git(path, "config", "user.email", "fixture@example.invalid")
-            # Exercise git apply under Windows-style checkout line endings too.
+            # Verify clean dependency checkouts with Windows-style line endings too.
             self.run_git(path, "config", "core.autocrlf", "true")
             (path / "Cargo.toml").write_text('dependency = "old"\n')
             self.run_git(path, "add", "Cargo.toml")
@@ -31,9 +31,7 @@ class DependencyContractTests(unittest.TestCase):
             self.pins[name] = {"repository": f"gpui-luma-dev/{name}",
                                "revision": dependencies.git(path, "rev-parse", "HEAD")}
         self.save_pins()
-        (self.root / ".github/patches/gpui-luma-xgpui.patch").write_text(
-            '--- a/Cargo.toml\n+++ b/Cargo.toml\n@@ -1 +1 @@\n-dependency = "old"\n+dependency = "new"\n')
-        for name in ["Cargo.lock", "rust-toolchain.toml"]:
+        for name in ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml"]:
             (self.root / name).write_text("fixture\n")
 
     def run_git(self, path, *args):
@@ -49,7 +47,7 @@ class DependencyContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "complete commit SHA"):
             dependencies.configuration(self.root)
 
-    def test_rejects_wrong_commit_before_patching(self):
+    def test_rejects_wrong_commit(self):
         self.pins["xgpui"]["revision"] = "a" * 40
         self.save_pins()
         with self.assertRaisesRegex(ValueError, "expected"):
@@ -63,19 +61,19 @@ class DependencyContractTests(unittest.TestCase):
                 dependencies.prepare(self.root)
         self.assertEqual(path.read_text(), "developer edits\n")
 
-    def test_applies_bridge_to_clean_checkouts(self):
+    def test_verifies_clean_checkouts_without_modifying_them(self):
         with contextlib.redirect_stdout(io.StringIO()):
             dependencies.prepare(self.root)
-        self.assertEqual((self.root.parent / "gpui-luma/Cargo.toml").read_text(), 'dependency = "new"\n')
+        self.assertEqual(dependencies.git(self.root.parent / "gpui-luma", "status", "--porcelain"), "")
         self.assertEqual(dependencies.git(self.root.parent / "xgpui", "status", "--porcelain"), "")
 
-    def test_cache_identity_changes_with_patch_or_lock(self):
+    def test_cache_identity_changes_with_manifest_or_lock(self):
         initial = dependencies.fingerprint(self.root)
         with (self.root / "Cargo.lock").open("a") as file:
             file.write("new dependency\n")
         changed = dependencies.fingerprint(self.root)
         self.assertNotEqual(initial, changed)
-        with (self.root / ".github/patches/gpui-luma-xgpui.patch").open("a") as file:
+        with (self.root / "Cargo.toml").open("a") as file:
             file.write("\n")
         self.assertNotEqual(changed, dependencies.fingerprint(self.root))
 

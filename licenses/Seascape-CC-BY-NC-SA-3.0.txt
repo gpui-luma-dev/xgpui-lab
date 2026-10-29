@@ -1,0 +1,22 @@
+Seascape by Alexander Alekseev aka TDM - 2014
+Contact: tdmaav@gmail.com
+Original: https://www.shadertoy.com/view/Ms2SD1
+Author's source: https://github.com/tdmaav/shadertoy/blob/master/Seascape.shader
+Source blob: 1db1492a27e6f97059edeb75eeda03f3521be451
+
+The original shader and the adapted src/shader/seascape.wgsl are licensed
+under Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported:
+https://creativecommons.org/licenses/by-nc-sa/3.0/
+Legal code: https://creativecommons.org/licenses/by-nc-sa/3.0/legalcode.en
+
+This WGSL adaptation modifies the original GLSL: explicit host parameters,
+top-left UV conversion, trace state instead of an out parameter, defined
+reversed smoothstep, guarded normal/trace arithmetic, and optional lower-detail
+normals. The application expands the two constant-bound loops for the v1 API.
+Default tracing uses 32 steps, 3 geometry octaves and 5 normal octaves. The
+original optional 3x3 supersampling is disabled. The procedural noise,
+height-field tracing, sky/reflection/refraction and gamma-style output remain.
+
+This sample and its adaptation retain the noncommercial and share-alike
+license terms. They are not relicensed under the application's Apache-2.0
+license. See the linked legal code for the full applicable license terms.
