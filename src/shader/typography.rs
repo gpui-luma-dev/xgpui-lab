@@ -454,8 +454,12 @@ impl TypographyDemo {
             Fill | Shadow | Softness => unreachable!("selector setting"),
             Sample(index) => self.choose(index, cx),
             Motion(mode) => {
-                self.motion = mode;
-                self.playing = mode == MotionMode::Wave;
+                self.motion = if self.motion == mode { MotionMode::Static } else { mode };
+                self.playing = self.motion == MotionMode::Wave;
+                // A newly selected reveal effect must show its initial preview, even
+                // after the previous effect completed. Samples share this state.
+                self.progress = 0.;
+                self.phase = 0.;
                 self.last_tick = Instant::now();
             }
             Play => {
@@ -590,6 +594,39 @@ mod tests {
             assert_eq!(text.read(cx).selected_text(), "🇺🇸");
         });
     }
+    #[test]
+    fn motion_selection_resets_completed_previews_and_toggles_across_samples() {
+        let mut app = TestAppContext::single();
+        app.update(|cx| gpui_luma::init(cx).unwrap());
+        let (page, cx) = app.add_window_view(|_, cx| TypographyDemo::new(crate::theme::default_look(), cx));
+        cx.run_until_parked();
+        page.update(cx, |demo, cx| {
+            demo.progress = 1.;
+            demo.phase = 48.;
+            demo.action(Action::Motion(MotionMode::Scramble), cx);
+            assert_eq!(demo.motion, MotionMode::Scramble);
+            assert_eq!(demo.progress, 0.);
+            assert_eq!(demo.phase, 0.);
+            assert!(!demo.playing);
+            demo.action(Action::Play, cx);
+            assert!(demo.playing);
+            demo.action(Action::Sample(1), cx);
+            demo.action(Action::Sample(0), cx);
+            assert_eq!(demo.motion, MotionMode::Scramble);
+            demo.action(Action::Motion(MotionMode::Scramble), cx);
+            assert_eq!(demo.motion, MotionMode::Static);
+            assert!(!demo.playing);
+            demo.progress = 1.;
+            demo.action(Action::Motion(MotionMode::Typewriter), cx);
+            assert_eq!(demo.progress, 0.);
+        });
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            let demo = page.read(cx);
+            assert_eq!(demo.samples[0].read(cx).effect(), KineticEffect::Typewriter { progress: 0. });
+        });
+    }
+
     #[test]
     fn pointer_drag_word_and_line_selection_use_the_original_text() {
         use gpui::{Modifiers, MouseButton, MouseDownEvent, VisualTestContext, div, point, prelude::*, px, size};
