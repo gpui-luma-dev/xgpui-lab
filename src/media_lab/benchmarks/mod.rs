@@ -1,5 +1,11 @@
-//! Media workloads embedded from media-lab: no source checkout, Cargo or child processes at runtime.
+//! Embedded Media workloads. Lifecycle stress isolates crashes in a copy of this executable.
 mod atlas;
+mod atlas_checks;
+mod lifecycle;
+#[cfg(target_os = "macos")]
+mod ownership;
+#[cfg(target_os = "macos")]
+mod surface;
 pub(super) mod cadence;
 mod scroll;
 mod upload;
@@ -33,9 +39,10 @@ enum Case {
     Scroll,
     Atlas,
     Video,
+    Lifecycle,
 }
 impl Case {
-    const ALL: [Self; 5] = [Self::Upload, Self::Cadence, Self::Scroll, Self::Atlas, Self::Video];
+    const ALL: [Self; 6] = [Self::Upload, Self::Cadence, Self::Scroll, Self::Atlas, Self::Video, Self::Lifecycle];
     fn id(self) -> &'static str {
         match self {
             Self::Upload => "upload",
@@ -43,6 +50,7 @@ impl Case {
             Self::Scroll => "scroll",
             Self::Atlas => "atlas",
             Self::Video => "video",
+            Self::Lifecycle => "lifecycle",
         }
     }
     fn label(self) -> &'static str {
@@ -52,6 +60,7 @@ impl Case {
             Self::Scroll => "Sustained scrolling",
             Self::Atlas => "Atlas / mipmap capture",
             Self::Video => "Native video checks",
+            Self::Lifecycle => "Lifecycle stress",
         }
     }
 }
@@ -70,14 +79,14 @@ fn run_background(case: Case, output: &Path, cancel: &AtomicBool) -> Result<Valu
         Case::Atlas => {
             let fixtures = Fixtures::new(None)?;
             atlas::run(&fixtures, &png, cancel)?;
-            json!({"description": "Generated app fixtures rendered through the GPUI atlas and dedicated mipmapped media textures. Every source must upload exactly once.", "errors": []})
+            json!({"checks": ["odd-width monochrome and BGRA pixels", "cache hits", "scene replay", "eviction and stale replay", "reinsertion with changed pixels"], "description": "Generated app fixtures rendered through the GPUI atlas and dedicated mipmapped media textures. Every source must upload exactly once.", "errors": []})
         }
         Case::Video => {
             #[cfg(target_os = "macos")]
             {
                 video::run(&png, cancel)?;
-                json!({"formats": ["BGRA8", "NV12 full BT.601", "NV12 video BT.601", "NV12 full BT.709", "NV12 video BT.709"],
-                    "checks": ["RGB/range/matrix", "rounded corners", "opacity", "content mask", "import reuse after resize"], "errors": []})
+                json!({"surface_formats": ["BGRA8", "NV12 full-range BT.601"], "surface_cases": 8, "formats": ["BGRA8", "NV12 full BT.601", "NV12 video BT.601", "NV12 full BT.709", "NV12 video BT.709"],
+                    "checks": ["RGB/range/matrix", "rounded corners", "opacity", "content mask", "import reuse after resize", "native PaintSurface BGRA/NV12 pixels", "Surface clip, resize, replacement and replay"], "errors": []})
             }
             #[cfg(not(target_os = "macos"))]
             {
@@ -176,11 +185,18 @@ fn record(case: Case, result: Result<Value>, output: &Path) -> Result<Value> {
     } else if report.get("outcome").is_none() {
         report["outcome"] = json!("completed");
     }
-    let mut previews = std::fs::read_dir(output)?
-        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-        .filter(|path| path.extension().is_some_and(|ext| ext == "png"))
-        .collect::<Vec<_>>();
+    let mut previews = report
+        .get("previews")
+        .and_then(Value::as_array)
+        .map_or_else(Vec::new, |paths| paths.iter().filter_map(Value::as_str).map(PathBuf::from).collect::<Vec<_>>());
+    previews.extend(
+        std::fs::read_dir(output)?
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| path.extension().is_some_and(|ext| ext == "png"))
+            .collect::<Vec<_>>(),
+    );
     previews.sort();
+    previews.dedup();
     report["previews"] = json!(previews);
     std::fs::write(output.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
     Ok(report)
@@ -283,7 +299,9 @@ impl Benchmarks {
                 if cancel.load(Ordering::Relaxed) { break; }
                 if this.update(cx, |this, cx| { this.status = format!("Running {}…", case.label()); cx.notify(); }).is_err() { return; }
                 let case_output = output.join(case.id());
-                let result = if matches!(case, Case::Cadence | Case::Scroll) {
+                let result = if case == Case::Lifecycle {
+                    lifecycle::run(&case_output, &cancel, cx).await
+                } else if matches!(case, Case::Cadence | Case::Scroll) {
                     let token = cancel.clone();
                     let prepared = cx.background_spawn(async move { prepare_visible(case, &token) }).await;
                     match prepared {
@@ -357,7 +375,7 @@ pub(crate) fn run_cli(args: &[String]) -> Result<()> {
         .iter()
         .position(|arg| arg == "--media-benchmark")
         .and_then(|index| args.get(index + 1))
-        .context("expected --media-benchmark <all|upload|cadence|scroll|atlas|video>")?;
+        .context("expected --media-benchmark <all|upload|cadence|scroll|atlas|video|lifecycle>")?;
     let case = if name == "all" {
         None
     } else {
@@ -403,6 +421,22 @@ pub(crate) fn run_cli(args: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn isolated_worker_previews_and_memory_failures_survive_recording() {
+        let output = tempfile::tempdir().unwrap();
+        let capture = output.path().join("worker/capture.png");
+        let report = record(
+            Case::Lifecycle,
+            Ok(json!({"previews":[capture],"errors":["RSS exceeded limit"],"memory_limit_pass":false})),
+            output.path(),
+        )
+        .unwrap();
+        assert_eq!(report["outcome"], "failed");
+        assert_eq!(report["previews"][0], capture.to_str().unwrap());
+        assert_eq!(report["memory_limit_pass"], false);
+        let saved: Value = serde_json::from_slice(&std::fs::read(output.path().join("report.json")).unwrap()).unwrap();
+        assert_eq!(saved, report);
+    }
     #[test]
     fn cancellation_stops_before_native_work_and_preserves_an_empty_report() {
         let output = tempfile::tempdir().unwrap();

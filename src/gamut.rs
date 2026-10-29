@@ -1,5 +1,6 @@
 pub(crate) mod reference;
 mod labs;
+mod compositing_checks;
 pub(crate) mod benchmarks;
 
 use std::sync::Arc;

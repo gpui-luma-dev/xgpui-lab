@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 use xgpui_media::{LoadStatus, MediaImage, MediaLoader, UploadStatus};
-fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
+pub(super) fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
     Bounds::new(point(ScaledPixels(x), ScaledPixels(y)), size(ScaledPixels(w), ScaledPixels(h)))
 }
 fn quad(scene: &mut Scene, bounds: Bounds<ScaledPixels>, color: u32) {
@@ -21,6 +21,7 @@ fn quad(scene: &mut Scene, bounds: Bounds<ScaledPixels>, color: u32) {
     });
 }
 pub fn run(fixtures: &Fixtures, png: &Path, cancel: &std::sync::atomic::AtomicBool) -> Result<()> {
+    super::atlas_checks::verify(png.parent().unwrap())?;
     let vivid = false;
     let adjustments = false;
     let mut renderer =

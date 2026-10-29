@@ -218,8 +218,9 @@ fn capture(case: Case, current: &Settings, look: Arc<Look>, cx: &mut App) -> Res
     })
 }
 
-fn save_capture(capture: Capture, output: &Path, case: Case) -> Result<Value> {
+fn save_capture(mut capture: Capture, output: &Path, case: Case) -> Result<Value> {
     std::fs::create_dir_all(output)?;
+    capture.report["pixel_checks"] = super::compositing_checks::verify(&output.join("compositing"))?;
     capture.image.save(output.join(format!("{}.png", case.id())))?;
     std::fs::write(output.join(format!("{}.json", case.id())), serde_json::to_vec_pretty(&capture.report)?)?;
     Ok(capture.report)

@@ -1,4 +1,6 @@
 //! Reproducible upload-phase CPU measurement, not a GPU timestamp benchmark.
+#[cfg(target_os = "macos")]
+use gpui_apple::metal::MTLDevice as _;
 use anyhow::{Context as _, Result, bail, ensure};
 use gpui::*;
 use image::ImageEncoder as _;

@@ -1,5 +1,7 @@
 //! Embedded paint-lab and shader-examples models, with Luma-owned controls.
 mod editor;
+pub(crate) mod grid;
+pub(crate) mod seascape;
 mod views;
 mod typography;
 mod gallery;
@@ -155,6 +157,8 @@ pub struct ShaderPage {
     typography: Entity<typography::TypographyDemo>,
     mesh_pane: Entity<mesh::MeshPane>,
     shadow_pane: Entity<shadows::ShadowPane>,
+    grid_pane: Entity<grid::GridPane>,
+    sea_pane: Entity<seascape::SeaPane>,
     gallery_buttons: Vec<(&'static str, Entity<Button>)>,
     gallery_choices: Vec<(&'static str, crate::lab_controls::Choice)>,
     gallery_labels: std::cell::RefCell<std::collections::HashMap<&'static str, String>>,
@@ -412,10 +416,14 @@ impl ShaderPage {
             ),
         ];
         let mesh_pane = cx.new(|cx| mesh::MeshPane::new(look.clone(), cx));
+        let sea_pane = cx.new(|cx| seascape::SeaPane::new(look.clone(), cx));
+        let grid_pane = cx.new(|cx| grid::GridPane::new(look.clone(), cx));
         let shadow_pane = cx.new(|cx| shadows::ShadowPane::new(look.clone(), cx));
         let mut page = Self {
             mesh_pane,
             shadow_pane,
+            grid_pane,
+            sea_pane,
             gallery_buttons,
             gallery_choices,
             gallery_labels: Default::default(),
@@ -457,8 +465,16 @@ impl ShaderPage {
 
     pub fn activate(&mut self, tab: SharedString, cx: &mut Context<Self>) {
         if self.active_tab != tab {
+            self.grid_pane.update(cx, |pane, _| pane.suspend());
+            self.sea_pane.update(cx, |pane, _| pane.suspend());
             self.typography.update(cx, |demo, _| demo.suspend());
             self.shadow_pane.update(cx, |page, _| page.animated = false);
+        }
+        if tab == "Shader Depot: Grid" {
+            self.grid_pane.update(cx, |pane, _| pane.activate());
+        }
+        if tab == "Shadertoy: Seascape" {
+            self.sea_pane.update(cx, |pane, _| pane.activate());
         }
         self.active_tab = tab;
         self.animated = false;
@@ -473,6 +489,8 @@ impl ShaderPage {
 
     pub fn suspend(&mut self, cx: &mut Context<Self>) {
         self.animated = false;
+        self.grid_pane.update(cx, |pane, _| pane.suspend());
+        self.sea_pane.update(cx, |pane, _| pane.suspend());
         self.typography.update(cx, |demo, _| demo.suspend());
         self.shadow_pane.update(cx, |page, _| page.animated = false);
     }
@@ -667,6 +685,8 @@ mod tests {
             "Mesh Editor",
             "Gradient Paints",
             "WGSL Paints",
+            "Shader Depot: Grid",
+            "Shadertoy: Seascape",
             "Instancing",
             "Typography",
             "Brushes",

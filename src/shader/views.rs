@@ -4,6 +4,14 @@ use xgpui_shader::{painted, Paint, WindowPaintExt, WindowShaderExt};
 impl Render for ShaderPage {
     fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_choices(_cx);
+        if self.active_tab == "Shadertoy: Seascape" {
+            self.sea_pane.update(_cx, |pane, _| pane.activate());
+            return div().size_full().child(self.sea_pane.clone()).into_any_element();
+        }
+        if self.active_tab == "Shader Depot: Grid" {
+            self.grid_pane.update(_cx, |pane, _| pane.activate());
+            return div().size_full().child(self.grid_pane.clone()).into_any_element();
+        }
         if self.requires_sdr() && window.color_status().effective() != gpui::WindowColorMode::Default {
             return div().p_4().child("Preparing SDR presentation for captured effects…").into_any_element();
         }

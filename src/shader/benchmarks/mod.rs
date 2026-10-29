@@ -1,5 +1,7 @@
 //! Embedded native paint coverage checks adapted from paint-lab/checks.rs.
 mod gradient_checks;
+pub(crate) mod grid_checks;
+pub(crate) mod seascape_checks;
 mod portable_checks;
 mod portable;
 use super::{gradient_stops, initial_mesh_grid, Effect, Settings};

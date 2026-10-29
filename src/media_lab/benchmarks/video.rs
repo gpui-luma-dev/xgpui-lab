@@ -10,6 +10,7 @@ use {
 use super::super::video_source::SourceFormat;
 #[cfg(target_os = "macos")]
 pub fn run(png: &FilePath, cancel: &std::sync::atomic::AtomicBool) -> Result<()> {
+    super::surface::run(png.parent().unwrap())?;
     let mut renderer =
         gpui_platform::current_headless_renderer()?.ok_or_else(|| anyhow::anyhow!("native renderer unavailable"))?;
     for (index, format) in SourceFormat::ALL.into_iter().enumerate() {

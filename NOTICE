@@ -75,3 +75,26 @@ public-domain camera, rg1024â€™s CC0 grapes and metal effect, and Ebaychatter0â€
 CC-BY-SA-3.0 dragon. Attribution, source links, license links and original
 hashes are retained in src/svg_lab/corpus.json. Artwork is unmodified. Parley benchmark reports reuse the embedded text-lab
 samples, timing routines and native/Parley scrolling and glyph-atlas workloads.
+
+Shader Depot: Grid adapts Christian Helgeson's WGSL Shader Depot:
+https://github.com/cmhhelgeson/WGSL_Shader_Depot
+Original grid.frag.wgsl blob: 8a3ea8340a7573f832f4b81917f90924c60c857a
+Original main.ts blob: b6aa3abfb42f385e07320b6de496269985d0878e
+Cosine interpolation blob: 917b28fb1ff016a1662a36ccae8d49c9a4b9ad33
+Copyright 2019 WebGPU Samples Contributors.
+BSD-3-Clause; full notice and terms: licenses/ShaderDepot-BSD-3-Clause.txt.
+Adaptations replace bindings and entry points with the public xgpui-shader
+v1/v2 contracts and keep pulse interpolation on the application side.
+
+Shadertoy: Seascape adapts "Seascape" by Alexander Alekseev aka TDM - 2014.
+Contact: tdmaav@gmail.com
+https://www.shadertoy.com/view/Ms2SD1
+Author's source: https://github.com/tdmaav/shadertoy/blob/master/Seascape.shader
+Source blob: 1db1492a27e6f97059edeb75eeda03f3521be451.
+The original shader and adapted src/shader/seascape.wgsl are licensed under
+Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported:
+https://creativecommons.org/licenses/by-nc-sa/3.0/
+They are not covered by the application's Apache-2.0 license.
+Changes: GLSL translated to WGSL, explicit host parameters, UV orientation,
+trace state, numerical guards, optional normal detail, loop expansion for v1.
+See licenses/Seascape-CC-BY-NC-SA-3.0.txt for provenance and license links.
