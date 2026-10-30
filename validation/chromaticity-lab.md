@@ -129,3 +129,16 @@ passed for Adobe RGB green, half alpha, both direct and nested opacity/blur.
 The library additionally passes 13 native wide-color tests and 7 wide-capture
 tests, including 96 FP16 color/alpha/capture/blur combinations. Source/ICC
 precision remains covered by the existing independent ingestion references.
+
+
+Metadata now cycles named → synthetic parametric → synthetic sampled →
+published Compact v4 sRGB → P3 → Adobe-compatible → named. Published files
+are pinned, unmodified CC0 fixtures with hashes and license alongside them.
+Their serialized curves/primaries are retained, including Adobe-compatible's
+slope limiting and distinct encoded gamma. The three real-profile modes have
+independent green/gray XYZ references, exact-f32 gray curve checks and alpha
+checks. All 13 standalone tests, strict Clippy and dev build pass. The new
+selector modes were compile/test checked; their native UI switching has not yet
+been exercised. No general image-format decoding or arbitrary file import was
+added. Published-profile rejection cases remain library tests, with details in
+its real-icc fixture README.
