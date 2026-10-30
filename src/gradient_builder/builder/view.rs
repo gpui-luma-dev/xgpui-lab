@@ -88,6 +88,16 @@ impl Render for GradientBuilder {
             window.request_animation_frame();
         }
         self.angle_last_frame = now;
+        let mesh_animating = self.mesh_palette_animation && self.selected_tab == BuilderTab::Mesh;
+        if mesh_animating {
+            let elapsed = now.duration_since(self.mesh_palette_last_frame).as_secs_f32().min(0.1);
+            self.advance_mesh_palette(elapsed);
+            if !self.mesh_p3 || !cfg!(target_os = "macos") || !super::p3::available(window) {
+                let _ = self.ensure_preview_image_cache(self.preview_size, cx);
+            }
+            window.request_animation_frame();
+        }
+        self.mesh_palette_last_frame = now;
         let chrome = self.look.chrome();
         let rotation_deg = self.rotation_deg;
         let stops = self.preview_stops(cx);
@@ -283,6 +293,14 @@ impl Render for GradientBuilder {
                 } else {
                     mesh_controls
                 };
+                let mesh_p3_active = self.selected_tab == BuilderTab::Mesh && self.mesh_p3 && cfg!(target_os = "macos") && super::p3::available(window);
+                let mesh_shader_active = self.selected_tab == BuilderTab::Mesh && (self.mesh_shader_enabled || mesh_p3_active);
+                let mesh_shader_preview = mesh_shader_active.then(|| self.mesh_shader_cache.element(
+                    &self.mesh_points, frame_size, self.mesh_background, self.mesh_controls_visible, mesh_p3_active,
+                ));
+                self.mesh_metrics.sample(now, now.elapsed(), mesh_animating);
+                let mesh_hud = format!("CPU prep  {:.2} ms\nUI FPS  {}", self.mesh_metrics.cpu_ms,
+                    self.mesh_metrics.fps.map(|fps| format!("{fps:.0}")).unwrap_or_else(|| "—".into()));
                 let preview_surface = div()
                     .id("color-viz-mesh-preview")
                     .on_mouse_down(
@@ -310,9 +328,17 @@ impl Render for GradientBuilder {
                             .w(frame_size.width)
                             .h(frame_size.height)
                             .overflow_hidden()
-                            .when_some(self.cached_preview_image(), |this, image| {
+                            .when_some(if mesh_shader_active { None } else { self.cached_preview_image() }, |this, image| {
                                 this.child(img(ImageSource::Render(image)).size_full().absolute().top_0().left_0())
                             })
+                            .when_some(mesh_shader_preview, |this, preview| this.child(preview))
+                            .when(self.selected_tab == BuilderTab::Mesh, |this| this.child(
+                                div().absolute().top(px(8.)).left(px(8.))
+                                    .px_2().py_1().rounded(px(4.))
+                                    .bg(gpui::hsla(0., 0., 0., 0.65))
+                                    .text_color(gpui::white()).text_size(px(11.))
+                                    .child(mesh_hud),
+                            ))
                             .child(
                                 canvas(|bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal), {
                                     let builder = cx.entity();

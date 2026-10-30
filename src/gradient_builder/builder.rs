@@ -18,6 +18,8 @@ use lucide_svg_static::Icon as LucideIcon;
 
 mod actions;
 mod linear_shader;
+mod mesh_shader;
+mod mesh_p3;
 mod p3;
 mod metrics;
 mod mesh;
@@ -64,6 +66,11 @@ pub struct GradientBuilder {
     freeform_hsl: bool,
     type_selector: Entity<Selector>,
     renderer_selector: Entity<Selector>,
+    mesh_p3: bool,
+    mesh_p3_switch: gpui_luma::controls::switch::Switch,
+    mesh_shader_enabled: bool,
+    mesh_renderer_selector: Entity<Selector>,
+    mesh_shader_cache: mesh_shader::Cache,
     mesh_grid_selector: Entity<Selector>,
     mesh_aspect_ratio_selector: Entity<Selector>,
     rotation_deg: f32,
@@ -79,6 +86,15 @@ pub struct GradientBuilder {
     preview_p3: bool,
     p3_switch: gpui_luma::controls::switch::Switch,
     p3_cache: p3::Cache,
+    mesh_palette: usize,
+    mesh_palette_animation: bool,
+    mesh_palette_phase: f32,
+    mesh_palette_speed: f32,
+    mesh_palette_last_frame: Instant,
+    mesh_palette_animate_button: Entity<Button>,
+    mesh_palette_speed_slider: Entity<SliderControl>,
+    mesh_metrics: metrics::Metrics,
+    mesh_cycle_button: Entity<Button>,
     mesh_grid_preset: MeshGridPreset,
     mesh_aspect_ratio_preset: MeshAspectRatioPreset,
     mesh_points: Vec<MeshPoint>,
@@ -181,14 +197,12 @@ impl GradientBuilder {
             .spawn(cx);
         let saturation_slider = radix::Slider::new("color-viz-image-saturation")
             .look(look.as_ref())
-            .size(radix::SliderSize::One)
             .range(-100.0..100.0)
             .step(1.0)
             .value(0.0)
             .spawn(cx);
         let vibrance_slider = radix::Slider::new("color-viz-image-vibrance")
             .look(look.as_ref())
-            .size(radix::SliderSize::One)
             .range(-100.0..100.0)
             .step(1.0)
             .value(0.0)
@@ -244,9 +258,22 @@ impl GradientBuilder {
             .items(renderer_items())
             .selected_id("quads")
             .spawn(cx);
+        let mesh_palette_animate_button = radix::Button::new("mesh-animate-palette")
+            .look(&look).outline().label("Start").spawn(cx);
+        let mesh_palette_speed_slider = radix::Slider::new("mesh-palette-speed")
+            .look(&look).range(0.1..2.0).step(0.1).value(0.5).spawn(cx);
+        let mesh_cycle_button = radix::Button::new("mesh-cycle-palette")
+            .look(&look).outline().label("Cycle").spawn(cx);
+        let mesh_renderer_selector = radix::Selector::new("mesh-preview-renderer")
+            .look(look.as_ref())
+            .items(vec![
+                gpui_luma::controls::selector::SelectorItem::new("cpu").label("CPU"),
+                gpui_luma::controls::selector::SelectorItem::new("shader").label("Shader paint"),
+            ])
+            .selected_id("cpu")
+            .spawn(cx);
         let mesh_grid_selector = radix::Selector::new("color-viz-mesh-grid")
             .look(look.as_ref())
-            .size(radix::ButtonSize::One)
             .items(mesh_grid_items())
             .selected_id("3x4")
             .spawn(cx);
@@ -276,6 +303,14 @@ impl GradientBuilder {
             .outline()
             .label("Animate")
             .spawn(cx);
+        let mesh_p3_switch = radix::Switch::new("mesh-display-p3")
+            .look(&look).label("Display P3").checked(false)
+            .on_value_changed(cx, |this: &mut Self, on, cx| {
+                this.mesh_p3 = on;
+                this.render_task = None;
+                this.sync_adjustment_support(cx);
+                cx.notify();
+            }).spawn(cx);
         let p3_switch = radix::Switch::new("gradient-preview-color-space")
             .look(&look)
             .label("Display P3")
@@ -322,6 +357,11 @@ impl GradientBuilder {
             freeform_hsl: false,
             type_selector: type_selector.clone(),
             renderer_selector: renderer_selector.clone(),
+            mesh_p3: false,
+            mesh_p3_switch,
+            mesh_shader_enabled: false,
+            mesh_renderer_selector: mesh_renderer_selector.clone(),
+            mesh_shader_cache: mesh_shader::Cache::default(),
             mesh_grid_selector: mesh_grid_selector.clone(),
             mesh_aspect_ratio_selector: mesh_aspect_ratio_selector.clone(),
             rotation_deg: 90.0,
@@ -337,6 +377,15 @@ impl GradientBuilder {
             preview_p3: false,
             p3_switch,
             p3_cache: p3::Cache::default(),
+            mesh_palette: mesh::default_mesh_palette(mesh_grid_preset),
+            mesh_palette_animation: false,
+            mesh_palette_phase: 0.,
+            mesh_palette_speed: 0.5,
+            mesh_palette_last_frame: Instant::now(),
+            mesh_palette_animate_button: mesh_palette_animate_button.clone(),
+            mesh_palette_speed_slider: mesh_palette_speed_slider.clone(),
+            mesh_metrics: metrics::Metrics::default(),
+            mesh_cycle_button: mesh_cycle_button.clone(),
             mesh_grid_preset,
             mesh_aspect_ratio_preset,
             mesh_points: default_mesh_points(mesh_grid_preset),
@@ -475,6 +524,32 @@ impl GradientBuilder {
                 this.angle_animation = !this.angle_animation;
                 this.angle_last_frame = Instant::now();
                 button.update(cx, |button, cx| button.set_label(if this.angle_animation { "Stop" } else { "Animate" }, cx));
+                cx.notify();
+            }
+        }));
+        builder._subscriptions.push(cx.subscribe(&mesh_renderer_selector, |this, _, event: &SelectorEvent, cx| {
+            if let SelectorEvent::Change { item_id, .. } = event {
+                this.mesh_shader_enabled = item_id.as_ref() == "shader";
+                this.render_task = None;
+                this.sync_adjustment_support(cx);
+                let _ = this.ensure_preview_image_cache(this.preview_size, cx);
+                cx.notify();
+            }
+        }));
+        builder._subscriptions.push(cx.subscribe(&mesh_cycle_button, |this, _, event: &ButtonEvent, cx| {
+            if matches!(event, ButtonEvent::Click) { this.cycle_mesh_palette(cx); }
+        }));
+        builder._subscriptions.push(cx.subscribe(&mesh_palette_animate_button, |this, button, event: &ButtonEvent, cx| {
+            if matches!(event, ButtonEvent::Click) {
+                this.mesh_palette_animation = !this.mesh_palette_animation;
+                this.mesh_palette_last_frame = Instant::now();
+                button.update(cx, |button, cx| button.set_label(if this.mesh_palette_animation { "Stop" } else { "Start" }, cx));
+                cx.notify();
+            }
+        }));
+        builder._subscriptions.push(cx.subscribe(&mesh_palette_speed_slider, |this, _, event: &SliderEvent, cx| {
+            if let SliderEvent::Change { value, .. } | SliderEvent::Release { value, .. } = event {
+                this.mesh_palette_speed = *value;
                 cx.notify();
             }
         }));

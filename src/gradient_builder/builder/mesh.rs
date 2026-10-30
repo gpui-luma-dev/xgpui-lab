@@ -284,21 +284,60 @@ pub(super) fn default_point_palette() -> [gpui::Hsla; 3] {
     ]
 }
 
+pub(super) const MESH_PALETTE_NAMES: [&str; 5] = ["Sunset", "Lagoon", "Orchid", "Citrus", "Aurora"];
+
+pub(super) fn default_mesh_palette(preset: MeshGridPreset) -> usize {
+    match preset {
+        MeshGridPreset::SampleThreeByFour => 0,
+        MeshGridPreset::TwoByTwo => 1,
+        MeshGridPreset::ThreeByThree => 2,
+        MeshGridPreset::FourByFour => 3,
+    }
+}
+
+pub(super) fn apply_mesh_palette(points: &mut [MeshPoint], palette: usize) {
+    const COLORS: [[u32; 4]; 5] = [
+        [0xffcb69, 0xf28482, 0x7b2cbf, 0x240046],
+        [0x023e8a, 0x00b4d8, 0x007f5f, 0xcaffbf],
+        [0x3c096c, 0xf72585, 0x4361ee, 0xffafcc],
+        [0x386641, 0xa7c957, 0xff7b00, 0xffe169],
+        [0x10002b, 0x00f5d4, 0x7b2cbf, 0xfee440],
+    ];
+    let colors = COLORS[palette % COLORS.len()].map(|hex| gpui::Hsla::from(gpui::rgb(hex)));
+    let Some((rows, cols)) = super::super::paint::mesh_dimensions(points) else { return; };
+    for point in points {
+        let u = point.col as f32 / (cols - 1) as f32;
+        let v = point.row as f32 / (rows - 1) as f32;
+        let top = color_at_position(&[(0., colors[0]), (1., colors[1])], u);
+        let bottom = color_at_position(&[(0., colors[2]), (1., colors[3])], u);
+        point.color = color_at_position(&[(0., top), (1., bottom)], v);
+    }
+}
+
+pub(super) fn blend_mesh_palettes(points: &mut [MeshPoint], palette: usize, phase: f32) {
+    apply_mesh_palette(points, palette);
+    if phase <= 0. { return; }
+    let mut next = points.to_vec();
+    apply_mesh_palette(&mut next, (palette + 1) % MESH_PALETTE_NAMES.len());
+    for (point, next) in points.iter_mut().zip(next) {
+        point.color = color_at_position(&[(0., point.color), (1., next.color)], phase.clamp(0., 1.));
+    }
+}
+
 pub(super) fn default_mesh_points(preset: MeshGridPreset) -> Vec<MeshPoint> {
     let (rows, cols) = preset.dimensions();
-    let [top, middle, bottom] = default_point_palette();
-    let row_colors = [(0.0, top), (0.5, middle), (1.0, bottom)];
-
-    (0..rows)
+    let mut points: Vec<_> = (0..rows)
         .flat_map(|row| {
-            let v = if rows == 1 { 0.0 } else { row as f32 / (rows - 1) as f32 };
-            let color = color_at_position(&row_colors, v);
-            (0..cols).map(move |col| {
-                let u = if cols == 1 { 0.0 } else { col as f32 / (cols - 1) as f32 };
-                MeshPoint { row: row as u8, col: col as u8, u, v, color }
+            (0..cols).map(move |col| MeshPoint {
+                row: row as u8, col: col as u8,
+                u: col as f32 / (cols - 1) as f32,
+                v: row as f32 / (rows - 1) as f32,
+                color: gpui::white(),
             })
         })
-        .collect()
+        .collect();
+    apply_mesh_palette(&mut points, default_mesh_palette(preset));
+    points
 }
 
 pub(super) fn fit_aspect_ratio(container: Size<Pixels>, aspect_preset: MeshAspectRatioPreset) -> Size<Pixels> {
@@ -352,4 +391,68 @@ pub(super) fn render_info_row(
         .gap_3()
         .child(div().typography_style(label_style).text_color(chrome.muted_text).child(label))
         .child(div().typography_style(value_style).text_color(chrome.body_text).child(value.into()))
+}
+
+#[cfg(test)]
+mod palette_tests {
+    use super::*;
+    #[test]
+    fn grid_defaults_differ_and_five_palettes_preserve_geometry() {
+        let presets = [MeshGridPreset::SampleThreeByFour, MeshGridPreset::TwoByTwo, MeshGridPreset::ThreeByThree, MeshGridPreset::FourByFour];
+        let defaults: Vec<_> = presets.iter().map(|preset| default_mesh_points(*preset)[0].color).collect();
+        for (i, color) in defaults.iter().enumerate() {
+            assert!(!defaults[..i].contains(color));
+        }
+        for preset in presets {
+            let mut points = default_mesh_points(preset);
+            points[0].u = 0.09;
+            let positions: Vec<_> = points.iter().map(|p| (p.row, p.col, p.u, p.v)).collect();
+            let first = points.clone();
+            let mut palettes = Vec::new();
+            for step in 1..=5 {
+                apply_mesh_palette(&mut points, (default_mesh_palette(preset) + step) % 5);
+                assert_eq!(points.iter().map(|p| (p.row, p.col, p.u, p.v)).collect::<Vec<_>>(), positions);
+                assert!(points.iter().all(|p| p.color.a == 1.));
+                let colors: Vec<_> = points.iter().map(|p| p.color).collect();
+                assert!(!palettes.contains(&colors));
+                palettes.push(colors);
+            }
+            assert_eq!(points, first);
+        }
+    }
+}
+
+#[cfg(all(test, feature = "test-support"))]
+mod animation_tests {
+    use super::super::*;
+    #[test]
+    fn palette_animation_blends_wraps_and_preserves_mesh_edits() {
+        let mut app = gpui::TestAppContext::single();
+        app.update(|cx| gpui_luma::init(cx).unwrap());
+        let (view, cx) = app.add_window_view(|_, cx| GradientBuilder::new(crate::theme::default_look(), cx));
+        cx.run_until_parked();
+        view.update(cx, |view, _| {
+            view.selected_tab = BuilderTab::Mesh;
+            view.mesh_palette = 4;
+            view.mesh_palette_speed = 0.5;
+            view.mesh_points[0].u = 0.08;
+            let positions: Vec<_> = view.mesh_points.iter().map(|p| (p.u, p.v)).collect();
+            let ids = view.mesh_point_ids.clone();
+            let mut start = view.mesh_points.clone();
+            mesh::apply_mesh_palette(&mut start, 4);
+            let mut end = start.clone();
+            mesh::apply_mesh_palette(&mut end, 0);
+            view.advance_mesh_palette(1.);
+            assert_eq!(view.mesh_palette, 4);
+            assert_eq!(view.mesh_palette_phase, 0.5);
+            let expected = super::super::super::paint::color_at_position(&[(0., start[0].color), (1., end[0].color)], 0.5);
+            assert_eq!(view.mesh_points[0].color, expected);
+            view.advance_mesh_palette(1.);
+            assert_eq!(view.mesh_palette, 0);
+            assert_eq!(view.mesh_palette_phase, 0.);
+            assert_eq!(view.mesh_points, end);
+            assert_eq!(view.mesh_point_ids, ids);
+            assert_eq!(view.mesh_points.iter().map(|p| (p.u, p.v)).collect::<Vec<_>>(), positions);
+        });
+    }
 }

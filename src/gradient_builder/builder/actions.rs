@@ -13,7 +13,11 @@ use super::mesh::{
 
 impl GradientBuilder {
     pub(super) fn adjustments_supported(&self) -> bool {
-        self.selected_tab != BuilderTab::Gradients || (!self.preview_p3 && !self.preview_renderer.is_shader())
+        match self.selected_tab {
+            BuilderTab::Gradients => !self.preview_p3 && !self.preview_renderer.is_shader(),
+            BuilderTab::Mesh => !self.mesh_shader_enabled && !self.mesh_p3,
+            BuilderTab::Freeform => true,
+        }
     }
 
     pub(super) fn sync_adjustment_support(&mut self, cx: &mut Context<Self>) {
@@ -248,8 +252,40 @@ impl GradientBuilder {
         cx.notify();
     }
 
+    pub(super) fn advance_mesh_palette(&mut self, elapsed: f32) {
+        let phase = self.mesh_palette_phase + elapsed * self.mesh_palette_speed;
+        let steps = phase.floor() as usize;
+        self.mesh_palette = (self.mesh_palette + steps) % super::mesh::MESH_PALETTE_NAMES.len();
+        self.mesh_palette_phase = phase.fract();
+        super::mesh::blend_mesh_palettes(&mut self.mesh_points, self.mesh_palette, self.mesh_palette_phase);
+        self.preview_image_cache = None;
+        self.render_task = None;
+    }
+
+    pub(super) fn cycle_mesh_palette(&mut self, cx: &mut Context<Self>) {
+        if self.selected_tab != BuilderTab::Mesh { return; }
+        self.mesh_palette_phase = 0.;
+        self.mesh_palette = (self.mesh_palette + 1) % super::mesh::MESH_PALETTE_NAMES.len();
+        super::mesh::apply_mesh_palette(&mut self.mesh_points, self.mesh_palette);
+        if self.color_picker_open {
+            if let MeshColorTarget::Point(index) = self.mesh_color_target {
+                if let Some(point) = self.mesh_points.get(index) {
+                    self.color_picker.update(cx, |picker, cx| picker.set_color(point.color, cx));
+                }
+            }
+        }
+        self.preview_image_cache = None;
+        self.render_task = None;
+        let _ = self.ensure_preview_image_cache(self.preview_size, cx);
+        cx.notify();
+    }
+
     pub(super) fn reset_mesh_state(&mut self, cx: &mut Context<Self>) {
         self.preview_image_cache = None;
+        if self.selected_tab != BuilderTab::Freeform {
+            self.mesh_palette = super::mesh::default_mesh_palette(self.mesh_grid_preset);
+            self.mesh_palette_phase = 0.;
+        }
         self.mesh_points = if self.selected_tab == BuilderTab::Freeform {
             super::freeform::default_points()
         } else {
@@ -497,6 +533,7 @@ impl GradientBuilder {
     }
 
     pub(super) fn uses_render_preview(&self, cx: &Context<Self>) -> bool {
+        if self.selected_tab == BuilderTab::Mesh && self.mesh_shader_enabled { return false; }
         if self.selected_tab == BuilderTab::Gradients && self.preview_renderer.is_shader() { return false; }
         if self.selected_tab != BuilderTab::Gradients || !self.image_adjustments.is_neutral() {
             return true;
