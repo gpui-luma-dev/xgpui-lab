@@ -276,4 +276,4 @@ FPS, Windows driver execution or browser/WebGL2 compatibility.
 
 ## Chromaticity and color gamut lab
 
-Run `cargo run --bin chromaticity-lab` for a standalone CIE xy/u′v′ diagram, explicit color-pipeline inspector, and native-wide/sRGB rendering comparison. See [controls, dependencies and validation](validation/chromaticity-lab.md).
+Run `just chromaticity` here, or `just profile=dev chromaticity` from the sibling xgpui root, for a standalone CIE xy/u′v′ diagram, explicit color-pipeline inspector, and native-wide/sRGB rendering comparison. See [controls, dependencies and validation](validation/chromaticity-lab.md).

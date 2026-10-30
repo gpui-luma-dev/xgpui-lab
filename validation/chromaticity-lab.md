@@ -1,6 +1,27 @@
 # Chromaticity & Color Gamut Lab
 
-Run independently of the main application:
+Run independently of the main application. From the **xgpui repository root**:
+
+```sh
+just profile=dev chromaticity
+just profile=dev chromaticity --effects
+just chromaticity-test
+```
+
+The xgpui root defaults to release builds; `profile=dev` avoids that rebuild while iterating. These recipes delegate to the sibling xgpui-lab justfile, so Cargo runs in the correct repository.
+
+From **xgpui-lab**:
+
+```sh
+just chromaticity
+just chromaticity --effects
+just profile=release chromaticity
+just chromaticity-test
+```
+
+The standalone lab defaults to the dev profile here. Arguments after the recipe are forwarded to the app. Its launcher permits lockfile resolution while these unpublished sibling APIs are changing; existing main-app recipes retain their locked builds.
+
+Direct Cargo equivalents:
 
 ```sh
 cargo run --offline --bin chromaticity-lab
