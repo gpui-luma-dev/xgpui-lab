@@ -28,7 +28,7 @@ cargo run --offline --bin chromaticity-lab
 cargo test --offline --bin chromaticity-lab
 ```
 
-Requires the sibling xgpui implementation in PRs #88 and #89 (Rec.2020 image storage and extended native composition). No compatibility layer or old API aliases are added. The main app remains the default Cargo run target.
+Requires the sibling xgpui implementation through draft PR #94 (its stack includes Rec.2020 storage, extended native composition, resolved pixel metadata and the optional ICC adapter). No compatibility layer or old API aliases are added. The main app remains the default Cargo run target.
 
 The app overlays sRGB, Display P3, Adobe RGB (1998), Rec.2020, D65 and a selected source point on CIE xy or u′v′. The spectral locus uses the checksum-verified CIE dataset in `assets/colorimetry`, with its attribution and license. Axes use equal physical units; ranges are stated below the diagram.
 
@@ -44,11 +44,17 @@ This is a standalone lab binary because unrelated main-app callers currently req
 
 For deterministic capture validation, run `cargo run --bin chromaticity-lab -- --effects`. Renderer errors are printed to stderr and recorded in the OS temporary directory as `xgpui-chromaticity-errors.log`.
 
+## Wide gamut and color spaces
+
+“Wide gamut” describes a display capability, not a specific RGB color space. P3 and Adobe RGB cover different regions; neither fully contains the other. The wide-gamut window uses extended linear P3 for composition on macOS, including negative and greater-than-one channels needed to carry colors outside bounded P3. Color management converts that result to the display profile; the panel still limits which colors can be reproduced. A display reporting wide-gamut capability does not establish its P3 or Adobe RGB coverage.
+
+The **Wide-gamut window** control requests native wide presentation. **Simulated gamut** sets the RGB bounds used to map the diagram fill; it does not change the monitor profile or select a hardware display mode. **Presentation** chooses whether the fill takes the clipped sRGB preview route or native wide route.
+
 ## Chromaticity color fills
 
-The diagram now fills the CIE locus at a selected relative input luminance **Y** (0.05, 0.18, 0.5 or 1). xyY / u′v′Y are inverted to XYZ, converted to the selected **Fill gamut** (sRGB, P3, Adobe RGB or Rec.2020), then mapped with the shared clip/chroma-reduction control. Mapping can change luminance. Hatching is an annotation for original colors outside that selected RGB cube at this Y; hatch pixels are not color samples.
+The diagram now fills the CIE locus at a selected relative input luminance **Y** (0.05, 0.18, 0.5 or 1). xyY / u′v′Y are inverted to XYZ, converted to the selected **Simulated gamut** (sRGB, P3, Adobe RGB or Rec.2020), then mapped with the shared clip/chroma-reduction control. Mapping can change luminance. Hatching is an annotation for original colors outside that selected RGB cube at this Y; hatch pixels are not color samples.
 
-**Fill** cycles off → clipped sRGB preview → native wide. The same retained image supports both routes. The sRGB route adds an explicit sRGB clip, even when Fill gamut is wider. Native wide requires accepted window-wide mode; the app labels its sRGB fallback. P3/sRGB fills use P3 storage; Adobe RGB/Rec.2020 fills use Rec.2020 storage. That avoids forcing P3 boundary colors into bounded Rec.2020.
+**Presentation** cycles off → clipped sRGB preview → native wide. The same retained image supports both routes. The sRGB route adds an explicit sRGB clip, even when Simulated gamut is wider. Native wide requires accepted window-wide mode; the app labels its sRGB fallback. P3/sRGB fills use P3 storage; Adobe RGB/Rec.2020 fills use Rec.2020 storage. That avoids forcing P3 boundary colors into bounded Rec.2020.
 
 Fill generation runs in a cancellable background worker. Rasterization checks the CIE locus polygon, leaves the outside transparent, and maps only inside cells. It produces a 256 × 256 associated-linear mip chain through the media loader. Cached textures are reused when switching preview/native routes. Hidden/offscreen images do not keep the app animating for an idle upload.
 
@@ -62,3 +68,40 @@ just chromaticity --native-fill --uv
 ```
 
 Validation: eight numerical/data tests and strict standalone Clippy pass. New tests check inverse-coordinate D65 XYZ references in both coordinate systems at four luminances, sRGB-red bounds using independent primary/Y values, transparent locus masking, clip/chroma-reduction output bounds and cancellation. Native macOS fills were inspected in both sRGB-preview and native-wide routes; Windows/Linux runtime remains unverified.
+
+
+## ICC metadata fixtures
+
+The **Metadata** control cycles named → ICC parametric fixture → ICC sampled
+fixture. The fixtures use Adobe RGB primaries with different serialized curves;
+they are synthetic, not monitor profiles. Identical generated RGBA values can
+therefore produce different decoded RGB, source XYZ/coordinates, and stored FP16.
+The inspector and gold source marker use the resolved profile, including explicit
+PCS-to-D65 adaptation. Reference gamut outlines and diagram fill controls remain
+independent of patch metadata.
+
+Source/Transfer controls explicitly return the patch to named metadata. While a
+fixture is active they say ICC colorants/curves instead of displaying inactive
+named settings. Probe gray and Probe blue presets plus the 0.0001 RGB step expose
+near-black precision. Probe presets are intentionally dark; Mid gray gives a
+visible patch comparison. Inspector values now show ten decimal places alongside
+actual half bits; these are CPU-packed values, not monitor measurements.
+
+From xgpui:
+
+```sh
+just profile=dev chromaticity --icc-parametric
+just profile=dev chromaticity --icc-sampled --native-fill
+```
+
+The same flags work with `just chromaticity` in xgpui-lab. They select the fixture
+and Probe gray preset; specifying both ICC flags is an error. Trusted embedded
+fixtures are parsed/cached before the UI event loop. No file/image decoder was
+added; the app supplies pixels + metadata through `load_pixel_buffer`.
+
+Numerical tests check near-black channel references from exact serialized curve
+coefficients/tables, zero-alpha canonicalization, invalid values and four
+independent XYZ/associated-FP16 references across P3/Rec.2020 storage. These tests
+exercise the new library adapter; they do not use its discarded transform engine.
+
+Validation: all 10 standalone tests, strict Clippy and a dev build pass. The real macOS Metal window was checked for named → parametric → sampled metadata switching with identical Mid gray pixels, changed decoded values/source marker, returning to named metadata, scrolling and retained patch rendering. WideGamutSdr was active with no fallback. This is consumer/UI evidence, not a monitor calibration or gamut measurement. Windows/Linux runtime remains unverified.
