@@ -27,7 +27,7 @@ unicode-segmentation = "1"
 xgpui-media = { path = "../xgpui/extensions/crates/xgpui-media" }
 xgpui-svg = { path = "../xgpui/extensions/crates/xgpui-svg" }
 tempfile = "3"
-xgpui-color = { path = "../xgpui/extensions/crates/xgpui-color" }
+xgpui-color = { path = "../xgpui/extensions/crates/xgpui-color", features = ["icc"] }
 xgpui-shader = { path = "../xgpui/extensions/crates/xgpui-shader", features = ["portable-shaders"] }
 xgpui-gamut = { path = "../xgpui/extensions/crates/xgpui-gamut", features = ["instanced"] }
 anyhow = "1"

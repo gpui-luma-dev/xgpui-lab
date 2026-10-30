@@ -1,9 +1,11 @@
 //! Standalone color-pipeline lab. Run with `cargo run --bin chromaticity-lab`.
 #[path = "chromaticity-lab/fill.rs"]
 mod fill;
+#[path = "chromaticity-lab/metadata.rs"]
+mod metadata;
 use gpui::{prelude::*, *};
 use std::sync::Arc;
-use xgpui_color::{GamutMapping, LinearRgb, RgbSpace};
+use xgpui_color::{GamutMapping, LinearRgb, RgbSpace, XyzD65};
 use xgpui_media::{
     ImageJob, MediaImage, MediaLoader,
     pipeline::{self, AlphaMode, ImageColor, ImagePrimaries, TransferFunction},
@@ -12,7 +14,7 @@ use xgpui_media::{
 const SPACES: [RgbSpace; 4] = [RgbSpace::Srgb, RgbSpace::DisplayP3, RgbSpace::AdobeRgb1998, RgbSpace::Rec2020];
 const NAMES: [&str; 4] = ["sRGB", "Display P3", "Adobe RGB (1998)", "Rec.2020"];
 const COLORS: [u32; 4] = [0x65d7ff, 0xff9a62, 0xc4a0ff, 0x91df86];
-const PRESETS: [(&str, [f32; 3]); 7] = [
+const PRESETS: [(&str, [f32; 3]); 9] = [
     ("Green", [0., 1., 0.]),
     ("Cyan", [0., 1., 1.]),
     ("Red", [1., 0., 0.]),
@@ -20,6 +22,8 @@ const PRESETS: [(&str, [f32; 3]); 7] = [
     ("Mid gray", [0.18; 3]),
     ("Near black", [0.001; 3]),
     ("White", [1.; 3]),
+    ("Probe gray", [0.0001; 3]),
+    ("Probe blue", [0., 0., 0.0001]),
 ];
 
 fn coordinates(xyz: [f64; 3], uv: bool) -> Option<[f64; 2]> {
@@ -71,6 +75,7 @@ struct Inspection {
     mapped: bool,
 }
 struct Lab {
+    metadata: metadata::Mode,
     source: usize,
     preset: usize,
     transfer: usize,
@@ -97,6 +102,7 @@ struct Lab {
 impl Lab {
     fn new() -> Self {
         let mut s = Self {
+            metadata: metadata::Mode::Named,
             source: 2,
             preset: 0,
             transfer: 1,
@@ -138,26 +144,21 @@ impl Lab {
         let result = (|| -> anyhow::Result<()> {
             let rgb = self.rgb;
             let rgba = [rgb[0], rgb[1], rgb[2], self.alpha];
-            let color = self.color();
+            let color = self.metadata.color(self.color())?;
             let mapping = if self.reduce {
                 GamutMapping::ReduceChroma
             } else {
                 GamutMapping::Clip
             };
-            let source = color.decode(rgba.map(f64::from), primaries(SPACES[self.source]))?.rgba();
-            let linear = LinearRgb::new(SPACES[self.source], [source[0], source[1], source[2]])?;
+            let source = metadata::inspect(&color, rgba)?;
             let target = if self.rec {
                 RgbSpace::Rec2020
             } else {
                 RgbSpace::DisplayP3
             };
-            let converted = linear.convert(target)?.components();
+            let converted = XyzD65::new(source.xyz)?.to_linear(target)?.components();
             let mapped = converted.iter().any(|v| *v < -1e-12 || *v > 1. + 1e-12);
-            let data = if self.rec {
-                pipeline::rec2020_rgba16f_data(1, 1, vec![rgba], color, mapping)?
-            } else {
-                pipeline::rgba16f_data_with_mapping(1, 1, vec![rgba], color, mapping)?
-            };
+            let data = pipeline::pixels_rgba16f_data(1, 1, vec![rgba], color.clone(), primaries(target), mapping)?;
             let bits =
                 std::array::from_fn(|i| u16::from_le_bytes([data.levels()[0][2 * i], data.levels()[0][2 * i + 1]]));
             let stored = bits.map(half);
@@ -167,20 +168,23 @@ impl Lab {
                 vec![0.; 3]
             };
             let restored = LinearRgb::new(target, [straight[0], straight[1], straight[2]])?;
-            let original = linear.to_xyz()?.components();
+            let original = source.xyz;
             let actual = restored.to_xyz()?.components();
             let error = original.into_iter().zip(actual).map(|(a, b)| (a - b).abs()).fold(0., f64::max);
             let composed = restored.convert(RgbSpace::DisplayP3)?.components();
             self.inspection =
-                Some(Inspection { linear: linear.components(), xyz: original, stored, bits, composed, error, mapped });
+                Some(Inspection { linear: source.decoded, xyz: original, stored, bits, composed, error, mapped });
             let loader = MediaLoader::default();
             // Native and preview share identical pixels; separate jobs also exercise retention/upload.
             for _ in 0..2 {
-                self.jobs.push(if self.rec {
-                    loader.load_rec2020_rgba16f(64, 32, vec![rgba; 64 * 32], color, mapping)?
-                } else {
-                    loader.load_rgba16f_with_mapping(64, 32, vec![rgba; 64 * 32], color, mapping)?
-                });
+                self.jobs.push(loader.load_pixel_buffer(
+                    64,
+                    32,
+                    vec![rgba; 64 * 32],
+                    color.clone(),
+                    primaries(target),
+                    mapping,
+                )?);
             }
             Ok(())
         })();
@@ -217,12 +221,22 @@ impl Lab {
             .child(label)
             .on_click(cx.listener(move |s, _, window, cx| {
                 match action {
-                    0 => s.source = (s.source + 1) % 4,
+                    0 => {
+                        if s.metadata == metadata::Mode::Named {
+                            s.source = (s.source + 1) % 4;
+                        }
+                        s.metadata = metadata::Mode::Named;
+                    }
                     1 => {
                         s.preset = (s.preset + 1) % PRESETS.len();
                         s.rgb = PRESETS[s.preset].1;
                     }
-                    2 => s.transfer = (s.transfer + 1) % 3,
+                    2 => {
+                        if s.metadata == metadata::Mode::Named {
+                            s.transfer = (s.transfer + 1) % 3;
+                        }
+                        s.metadata = metadata::Mode::Named;
+                    }
                     3 => s.rec = !s.rec,
                     4 => s.reduce = !s.reduce,
                     5 => {
@@ -260,7 +274,7 @@ impl Lab {
                     }
                     9..=11 => {
                         let c = action - 9;
-                        let steps = [0., 0.001, 0.18, 0.5, 1.];
+                        let steps = [0., 0.0001, 0.001, 0.18, 0.5, 1.];
                         let index = steps.iter().position(|v| *v == s.rgb[c]).unwrap_or(0);
                         s.rgb[c] = steps[(index + 1) % steps.len()];
                     }
@@ -268,9 +282,10 @@ impl Lab {
                     13 => s.fill_luminance = (s.fill_luminance + 1) % fill::LUMINANCE.len(),
                     14 => s.fill_output = (s.fill_output + 1) % SPACES.len(),
                     15 => s.hatch = !s.hatch,
+                    16 => s.metadata = s.metadata.next(),
                     _ => {}
                 }
-                if action < 6 || (9..=11).contains(&action) {
+                if action < 6 || action == 16 || (9..=11).contains(&action) {
                     s.reload();
                 }
                 if [4, 6, 13, 14, 15].contains(&action) {
@@ -499,7 +514,7 @@ impl Render for Lab {
         let i = self.inspection.clone();
         let info = if let Some(i) = i {
             format!(
-                "Source linear RGB   {:.7?}\nXYZ D65             {:.7?}\nCoordinates         {:.7?}\nStored RGBA16F      {:.7?}\nFP16 bits           {:04x?}\nPredicted linear P3 {:.7?}\nMax XYZ error       {:.9e}\nIngestion mapping   {}",
+                "Decoded source RGB  {:.10?}\nXYZ D65             {:.10?}\nCoordinates         {:.10?}\nStored RGBA16F      {:.10?}\nFP16 bits           {:04x?}\nPredicted linear P3 {:.7?}\nMax XYZ error       {:.9e}\nIngestion mapping   {}",
                 i.linear,
                 i.xyz,
                 coordinates(i.xyz, self.uv),
@@ -519,12 +534,13 @@ impl Render for Lab {
         div().id("chromaticity-scroll").overflow_y_scroll().size_full().bg(rgb(0x101823)).text_color(rgb(0xe2eaf3)).p_6().flex().flex_col().gap_3()
             .child(div().text_2xl().child("Chromaticity & Color Gamut Lab"))
             .child("Source → transfer decode → explicit storage mapping → FP16 → extended composition → output")
-            .child(div().flex().flex_wrap().gap_2().child(self.button(format!("Source: {}",NAMES[self.source]),0,cx)).child(self.button(format!("Patch: {}",if self.rgb==PRESETS[self.preset].1 {PRESETS[self.preset].0} else {"Custom"}),1,cx)).child(self.button(format!("Transfer: {:?}",self.color().transfer),2,cx)).child(self.button(format!("Storage: {}",if self.rec {"Rec.2020"} else {"P3"}),3,cx)).child(self.button(format!("Map: {}",if self.reduce {"reduce chroma"} else {"clip"}),4,cx)).child(self.button(format!("Alpha: {}",self.alpha),5,cx)).child(self.button(if self.uv {"CIE u′v′"} else {"CIE xy"}.into(),6,cx)).child(self.button(format!("Nested captures + blur: {}",self.effects),7,cx)).child(self.button(format!("Wide mode: {}",self.wide),8,cx)))
-            .child(div().flex().flex_wrap().gap_2().child(self.button(format!("Fill: {}",["off","sRGB preview","native wide"][self.fill_route]),12,cx)).child(self.button(format!("Fill Y: {}",fill::LUMINANCE[self.fill_luminance]),13,cx)).child(self.button(format!("Fill gamut: {}",NAMES[self.fill_output]),14,cx)).child(self.button(format!("Hatch mapped colors: {}",self.hatch),15,cx)))
+            .child(div().flex().flex_wrap().gap_2().child(self.button(format!("Source: {}",if self.metadata==metadata::Mode::Named {NAMES[self.source]} else {"ICC colorants"}),0,cx)).child(self.button(format!("Patch: {}",if self.rgb==PRESETS[self.preset].1 {PRESETS[self.preset].0} else {"Custom"}),1,cx)).child(self.button(if self.metadata==metadata::Mode::Named {format!("Transfer: {:?}",self.color().transfer)} else {"Transfer: ICC curves".into()},2,cx)).child(self.button(format!("Storage: {}",if self.rec {"Rec.2020"} else {"P3"}),3,cx)).child(self.button(format!("Map: {}",if self.reduce {"reduce chroma"} else {"clip"}),4,cx)).child(self.button(format!("Alpha: {}",self.alpha),5,cx)).child(self.button(if self.uv {"CIE u′v′"} else {"CIE xy"}.into(),6,cx)).child(self.button(format!("Nested captures + blur: {}",self.effects),7,cx)).child(self.button(format!("Wide-gamut window: {}",self.wide),8,cx)))
+            .child(div().flex().flex_wrap().gap_2().child(self.button(format!("Metadata: {}",self.metadata.label()),16,cx)).child(self.button(format!("Presentation: {}",["off","sRGB preview","native wide"][self.fill_route]),12,cx)).child(self.button(format!("Fill Y: {}",fill::LUMINANCE[self.fill_luminance]),13,cx)).child(self.button(format!("Simulated gamut: {}",NAMES[self.fill_output]),14,cx)).child(self.button(format!("Hatch mapped colors: {}",self.hatch),15,cx)))
             .child(div().text_sm().child(format!("{} • {}. Hatching marks colors outside the selected RGB bounds at fixed relative Y, not measured monitor coverage. Fill Y is before mapping and independent of patch brightness. sRGB preview additionally clips to sRGB.",self.fill_status,if self.fill_route==2 && !self.wide {"native unavailable — showing sRGB preview"} else {"output mapping is explicit"})))
-            .child(div().text_sm().child("Click controls to cycle. RGB steps: 0, 0.001, 0.18, 0.5, 1. Transfer is independent of primaries."))
+            .child(div().text_sm().child("Wide gamut describes display capability; P3 and Adobe RGB are specific color spaces. Simulated gamut limits the fill; presentation selects sRGB clipping or native wide output. The display profile and panel determine visible colors."))
+            .child(div().text_sm().child("Click controls to cycle. RGB steps: 0, 0.0001, 0.001, 0.18, 0.5, 1. Source/Transfer return ICC patches to named metadata. Synthetic ICC fixtures use Adobe RGB primaries, f64 curves and PCS-to-D65 adaptation. Probe presets are intentionally dark; choose Mid gray for visible differences."))
             .child(div().flex().gap_2().children((0..3).map(|c|self.button(format!("{}: {}",["R","G","B"][c],self.rgb[c]),9+c,cx))))
-            .child(div().text_sm().child(format!("{} • active: {:?} • display wide: {:?} • fallback: {:?}",if cfg!(target_os="macos") {"Metal"} else if cfg!(target_os="windows") {"D3D11"} else {"Native backend"},window.color_status().effective(),window.color_status().display_wide_gamut(),window.color_status().fallback())))
+            .child(div().text_sm().child(format!("{} • active: {:?} • display reports wide gamut: {:?} • fallback: {:?}",if cfg!(target_os="macos") {"Metal"} else if cfg!(target_os="windows") {"D3D11"} else {"Native backend"},window.color_status().effective(),window.color_status().display_wide_gamut(),window.color_status().fallback())))
             .child(div().flex().gap_5().child(div().flex_1().min_w_0().child(self.diagram()).child(div().flex().gap_3().children(NAMES.into_iter().enumerate().map(|(i,n)|div().text_color(rgb(COLORS[i])).child(n)))).child("White cross: D65 • gold cross: selected source. Axes start at zero; xy max 0.8 × 0.9, u′v′ max 0.65 × 0.65. CIE 1931 2° spectral locus + purple boundary (CIE 2019, CC BY-SA 4.0); no monitor measurement." )).child(div().w(px(440.)).text_sm().child(info)))
             .child(div().flex().gap_4().child(self.patch(self.images.first().cloned(),true,window.scale_factor())).child(self.patch(self.images.get(1).cloned(),false,window.scale_factor())))
             .child(self.error.clone().unwrap_or_else(||"P3 red lies slightly outside Rec.2020. Keep P3 storage to retain all of P3. Plotted gamuts do not imply monitor coverage. FP16 values are inspected from actual CPU-packed bytes; composition values are predicted, not a GPU readback.".into()))
@@ -564,6 +580,14 @@ static DIAGNOSTICS: Diagnostics = Diagnostics;
 fn main() {
     let _ = log::set_logger(&DIAGNOSTICS);
     log::set_max_level(log::LevelFilter::Error);
+    if let Err(error) = metadata::fixtures() {
+        eprintln!("{error:#}");
+        std::process::exit(1);
+    }
+    if std::env::args().any(|a| a == "--icc-parametric") && std::env::args().any(|a| a == "--icc-sampled") {
+        eprintln!("Choose one ICC fixture flag");
+        std::process::exit(2);
+    }
     gpui_platform::application().run(|cx| {
         cx.on_window_closed(|cx, _| {
             if cx.windows().is_empty() {
@@ -580,6 +604,16 @@ fn main() {
                 window.set_window_title("Chromaticity & Color Gamut Lab");
                 cx.new(|_| {
                     let mut lab = Lab::new();
+                    if std::env::args().any(|a| a == "--icc-parametric" || a == "--icc-sampled") {
+                        lab.metadata = if std::env::args().any(|a| a == "--icc-sampled") {
+                            metadata::Mode::Sampled
+                        } else {
+                            metadata::Mode::Parametric
+                        };
+                        lab.preset = 7;
+                        lab.rgb = PRESETS[7].1;
+                        lab.reload();
+                    }
                     if std::env::args().any(|a| a == "--native-fill") {
                         lab.fill_route = 2;
                     }
