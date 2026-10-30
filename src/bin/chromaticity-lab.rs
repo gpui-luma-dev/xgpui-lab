@@ -1,4 +1,6 @@
 //! Standalone color-pipeline lab. Run with `cargo run --bin chromaticity-lab`.
+#[path = "chromaticity-lab/fill.rs"]
+mod fill;
 use gpui::{prelude::*, *};
 use std::sync::Arc;
 use xgpui_color::{GamutMapping, LinearRgb, RgbSpace};
@@ -83,6 +85,14 @@ struct Lab {
     inspection: Option<Inspection>,
     error: Option<String>,
     wide: bool,
+    fill_route: usize,
+    fill_output: usize,
+    fill_luminance: usize,
+    hatch: bool,
+    fill_worker: Option<fill::Job>,
+    fill_job: Option<ImageJob>,
+    fill_image: Option<MediaImage>,
+    fill_status: String,
 }
 impl Lab {
     fn new() -> Self {
@@ -101,8 +111,17 @@ impl Lab {
             inspection: None,
             error: None,
             wide: false,
+            fill_route: 1,
+            fill_output: 1,
+            fill_luminance: 1,
+            hatch: true,
+            fill_worker: None,
+            fill_job: None,
+            fill_image: None,
+            fill_status: String::new(),
         };
         s.reload();
+        s.reload_fill();
         s
     }
     fn color(&self) -> ImageColor {
@@ -170,6 +189,23 @@ impl Lab {
             self.inspection = None;
         }
     }
+    fn reload_fill(&mut self) {
+        self.fill_worker = None;
+        self.fill_job = None;
+        self.fill_image = None;
+        self.fill_status = "Generating fill…".into();
+        self.fill_worker = Some(fill::Job::start(fill::Settings {
+            uv: self.uv,
+            luminance: fill::LUMINANCE[self.fill_luminance],
+            output: SPACES[self.fill_output],
+            mapping: if self.reduce {
+                GamutMapping::ReduceChroma
+            } else {
+                GamutMapping::Clip
+            },
+            hatch: self.hatch,
+        }));
+    }
     fn button(&self, label: String, action: usize, cx: &mut Context<Self>) -> AnyElement {
         div()
             .id(ElementId::Name(format!("control-{action}").into()))
@@ -228,10 +264,17 @@ impl Lab {
                         let index = steps.iter().position(|v| *v == s.rgb[c]).unwrap_or(0);
                         s.rgb[c] = steps[(index + 1) % steps.len()];
                     }
+                    12 => s.fill_route = (s.fill_route + 1) % 3,
+                    13 => s.fill_luminance = (s.fill_luminance + 1) % fill::LUMINANCE.len(),
+                    14 => s.fill_output = (s.fill_output + 1) % SPACES.len(),
+                    15 => s.hatch = !s.hatch,
                     _ => {}
                 }
-                if !(6..9).contains(&action) {
+                if action < 6 || (9..=11).contains(&action) {
                     s.reload();
+                }
+                if [4, 6, 13, 14, 15].contains(&action) {
+                    s.reload_fill();
                 }
                 cx.notify();
             }))
@@ -239,6 +282,8 @@ impl Lab {
     }
     fn diagram(&self) -> impl IntoElement {
         let uv = self.uv;
+        let fill = self.fill_image.clone().filter(|_| self.fill_route != 0);
+        let native = self.fill_route == 2 && self.wide;
         let selected = self.inspection.as_ref().and_then(|i| coordinates(i.xyz, uv));
         canvas(
             |_, _, _| (),
@@ -258,6 +303,18 @@ impl Lab {
                         bounds.bottom() - px(inset + p[1] as f32 / ymax * height),
                     )
                 };
+                if let Some(image) = &fill {
+                    let bounds = Bounds::new(pos([0., f64::from(ymax)]), size(px(width), px(height)));
+                    wake_for_upload(image, bounds, window);
+                    let geometry = CustomGeometry::RoundedRect { bounds, corner_radii: Default::default() };
+                    if native {
+                        if let Ok(source) = image.wide(None) {
+                            window.paint_custom(geometry, Arc::new(source));
+                        }
+                    } else {
+                        window.paint_custom(geometry, Arc::new(image.clone()));
+                    }
+                }
                 for n in 0..=8 {
                     let t = n as f64 / 8.;
                     for segment in [
@@ -333,6 +390,7 @@ impl Lab {
             |_, _, _| (),
             move |bounds, _, window, _| {
                 if let Some(image) = &image {
+                    wake_for_upload(image, bounds, window);
                     if wide {
                         if let Ok(image) = image.wide(None) {
                             window.paint_custom(
@@ -387,6 +445,41 @@ impl Lab {
 }
 impl Render for Lab {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(worker) = &self.fill_worker {
+            match worker.poll() {
+                Ok(Some(result)) => {
+                    self.fill_status = format!(
+                        "{:.1}% of spectral-locus cells require mapping at this Y",
+                        100. * result.mapped as f64 / result.visible.max(1) as f64
+                    );
+                    self.fill_job = Some(result.image);
+                    self.fill_worker = None;
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    self.fill_status = format!("Fill failed: {error:#}");
+                    self.fill_worker = None;
+                }
+            }
+        }
+        if let Some(job) = &mut self.fill_job {
+            if let Some(image) = job.try_take() {
+                self.fill_image = Some(image);
+            }
+            if let xgpui_media::LoadStatus::Failed(error) = job.status() {
+                self.fill_status = format!("Fill failed: {error}");
+            }
+        }
+        if self.fill_worker.is_some()
+            || self.fill_job.as_ref().is_some_and(|j| j.status() == xgpui_media::LoadStatus::Loading)
+        {
+            window.request_animation_frame();
+        }
+        if let Some(image) = &self.fill_image
+            && let xgpui_media::UploadStatus::Failed(error) = image.upload_status()
+        {
+            self.fill_status = format!("Fill upload failed: {error}");
+        }
         for job in &mut self.jobs {
             if let Some(image) = job.try_take() {
                 self.images.push(image);
@@ -395,11 +488,7 @@ impl Render for Lab {
                 self.error = Some(e);
             }
         }
-        if self.jobs.iter().any(|j| j.status() == xgpui_media::LoadStatus::Loading)
-            || self.images.iter().any(|i| {
-                !matches!(i.upload_status(), xgpui_media::UploadStatus::Ready | xgpui_media::UploadStatus::Failed(_))
-            })
-        {
+        if self.jobs.iter().any(|j| j.status() == xgpui_media::LoadStatus::Loading) {
             window.request_animation_frame();
         }
         for image in &self.images {
@@ -431,12 +520,23 @@ impl Render for Lab {
             .child(div().text_2xl().child("Chromaticity & Color Gamut Lab"))
             .child("Source → transfer decode → explicit storage mapping → FP16 → extended composition → output")
             .child(div().flex().flex_wrap().gap_2().child(self.button(format!("Source: {}",NAMES[self.source]),0,cx)).child(self.button(format!("Patch: {}",if self.rgb==PRESETS[self.preset].1 {PRESETS[self.preset].0} else {"Custom"}),1,cx)).child(self.button(format!("Transfer: {:?}",self.color().transfer),2,cx)).child(self.button(format!("Storage: {}",if self.rec {"Rec.2020"} else {"P3"}),3,cx)).child(self.button(format!("Map: {}",if self.reduce {"reduce chroma"} else {"clip"}),4,cx)).child(self.button(format!("Alpha: {}",self.alpha),5,cx)).child(self.button(if self.uv {"CIE u′v′"} else {"CIE xy"}.into(),6,cx)).child(self.button(format!("Nested captures + blur: {}",self.effects),7,cx)).child(self.button(format!("Wide mode: {}",self.wide),8,cx)))
+            .child(div().flex().flex_wrap().gap_2().child(self.button(format!("Fill: {}",["off","sRGB preview","native wide"][self.fill_route]),12,cx)).child(self.button(format!("Fill Y: {}",fill::LUMINANCE[self.fill_luminance]),13,cx)).child(self.button(format!("Fill gamut: {}",NAMES[self.fill_output]),14,cx)).child(self.button(format!("Hatch mapped colors: {}",self.hatch),15,cx)))
+            .child(div().text_sm().child(format!("{} • {}. Hatching marks colors outside the selected RGB bounds at fixed relative Y, not measured monitor coverage. Fill Y is before mapping and independent of patch brightness. sRGB preview additionally clips to sRGB.",self.fill_status,if self.fill_route==2 && !self.wide {"native unavailable — showing sRGB preview"} else {"output mapping is explicit"})))
             .child(div().text_sm().child("Click controls to cycle. RGB steps: 0, 0.001, 0.18, 0.5, 1. Transfer is independent of primaries."))
             .child(div().flex().gap_2().children((0..3).map(|c|self.button(format!("{}: {}",["R","G","B"][c],self.rgb[c]),9+c,cx))))
             .child(div().text_sm().child(format!("{} • active: {:?} • display wide: {:?} • fallback: {:?}",if cfg!(target_os="macos") {"Metal"} else if cfg!(target_os="windows") {"D3D11"} else {"Native backend"},window.color_status().effective(),window.color_status().display_wide_gamut(),window.color_status().fallback())))
             .child(div().flex().gap_5().child(div().flex_1().min_w_0().child(self.diagram()).child(div().flex().gap_3().children(NAMES.into_iter().enumerate().map(|(i,n)|div().text_color(rgb(COLORS[i])).child(n)))).child("White cross: D65 • gold cross: selected source. Axes start at zero; xy max 0.8 × 0.9, u′v′ max 0.65 × 0.65. CIE 1931 2° spectral locus + purple boundary (CIE 2019, CC BY-SA 4.0); no monitor measurement." )).child(div().w(px(440.)).text_sm().child(info)))
             .child(div().flex().gap_4().child(self.patch(self.images.first().cloned(),true,window.scale_factor())).child(self.patch(self.images.get(1).cloned(),false,window.scale_factor())))
             .child(self.error.clone().unwrap_or_else(||"P3 red lies slightly outside Rec.2020. Keep P3 storage to retain all of P3. Plotted gamuts do not imply monitor coverage. FP16 values are inspected from actual CPU-packed bytes; composition values are predicted, not a GPU readback.".into()))
+    }
+}
+// Poll only visible uploads. An offscreen or disabled fill may remain Idle;
+// keeping the whole window animating for that state would waste CPU indefinitely.
+fn wake_for_upload(image: &MediaImage, bounds: Bounds<Pixels>, window: &mut Window) {
+    if !bounds.intersect(&window.content_mask().bounds).is_empty()
+        && !matches!(image.upload_status(), xgpui_media::UploadStatus::Ready | xgpui_media::UploadStatus::Failed(_))
+    {
+        window.request_animation_frame();
     }
 }
 struct Diagnostics;
@@ -480,6 +580,13 @@ fn main() {
                 window.set_window_title("Chromaticity & Color Gamut Lab");
                 cx.new(|_| {
                     let mut lab = Lab::new();
+                    if std::env::args().any(|a| a == "--native-fill") {
+                        lab.fill_route = 2;
+                    }
+                    if std::env::args().any(|a| a == "--uv") {
+                        lab.uv = true;
+                        lab.reload_fill();
+                    }
                     lab.effects = cfg!(target_os = "macos") && std::env::args().any(|a| a == "--effects");
                     match window.set_color_mode(WindowColorMode::WideGamutSdr) {
                         Ok(s) => lab.wide = s.effective() == WindowColorMode::WideGamutSdr,
