@@ -16,3 +16,13 @@ and feeds generated pixels plus resolved metadata to xgpui-media. No image
 file decoding, runtime file access, or network access is involved. These fixtures
 are separate from the CIE dataset and its license; the repository's application
 license applies to these generated assets.
+
+
+`sRGB2014.icc` is an unmodified ICC-authored profile mirrored by libavif at
+commit `9b07a9d7a874b159bb4e14b80a6f08bb469d06f7`. Its original copyright tag
+is preserved; it is distributed under the ICC profile terms at
+https://www.color.org/profileview/ (not the Compact profiles' CC0 license).
+`srgb2014-manifest.json` pins the URL, size and SHA-256. Its sampled curves and
+slightly non-neutral relative PCS matrix are preserved exactly before D65
+adaptation. This is the same fixture covered by the library's independent
+precision corpus, not a claim about every revision named sRGB2014.

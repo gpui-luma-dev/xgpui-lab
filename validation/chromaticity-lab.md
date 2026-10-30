@@ -132,13 +132,23 @@ precision remains covered by the existing independent ingestion references.
 
 
 Metadata now cycles named → synthetic parametric → synthetic sampled →
-published Compact v4 sRGB → P3 → Adobe-compatible → named. Published files
+published Compact v4 sRGB → P3 → Adobe-compatible → sRGB2014 → named. Published files
 are pinned, unmodified CC0 fixtures with hashes and license alongside them.
 Their serialized curves/primaries are retained, including Adobe-compatible's
 slope limiting and distinct encoded gamma. The three real-profile modes have
 independent green/gray XYZ references, exact-f32 gray curve checks and alpha
-checks. All 13 standalone tests, strict Clippy and dev build pass. The new
+checks. All 14 standalone tests, strict Clippy and dev build pass. The new
 selector modes were compile/test checked; their native UI switching has not yet
 been exercised. No general image-format decoding or arbitrary file import was
 added. Published-profile rejection cases remain library tests, with details in
 its real-icc fixture README.
+
+
+The sampled sRGB2014 mode uses the unmodified ICC-authored fixture. Its encoded
+PCS matrix is not forced onto a perfectly neutral ramp; the header PCS white
+is used for one D65 adaptation. It retains the actual 1024-entry table rather
+than using named sRGB. Independent green, exact-f32 gray and white XYZ checks
+pass, as do gray curve and alpha checks. The source white intentionally differs
+slightly from D65; the inspector may report explicit storage mapping at white.
+The published-profile native UI modes remain compile/test checked, with live
+UI switching still unverified for these additions.
