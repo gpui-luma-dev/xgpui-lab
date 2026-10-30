@@ -137,9 +137,8 @@ are pinned, unmodified CC0 fixtures with hashes and license alongside them.
 Their serialized curves/primaries are retained, including Adobe-compatible's
 slope limiting and distinct encoded gamma. The three real-profile modes have
 independent green/gray XYZ references, exact-f32 gray curve checks and alpha
-checks. All 14 standalone tests, strict Clippy and dev build pass. The new
-selector modes were compile/test checked; their native UI switching has not yet
-been exercised. No general image-format decoding or arbitrary file import was
+checks. All 14 standalone tests, strict Clippy and dev build pass. The published selector modes were subsequently checked in the native Metal
+window; the detailed results follow below. No general image-format decoding or arbitrary file import was
 added. Published-profile rejection cases remain library tests, with details in
 its real-icc fixture README.
 
@@ -150,5 +149,33 @@ is used for one D65 adaptation. It retains the actual 1024-entry table rather
 than using named sRGB. Independent green, exact-f32 gray and white XYZ checks
 pass, as do gray curve and alpha checks. The source white intentionally differs
 slightly from D65; the inspector may report explicit storage mapping at white.
-The published-profile native UI modes remain compile/test checked, with live
-UI switching still unverified for these additions.
+Published-profile switching and GPU composition were checked in the native
+Metal window, as recorded below.
+
+
+Published-profile live validation (2026-10-30): application code `8f0d071`,
+library `75afbe2`, macOS Metal, WideGamutSdr active, display wide capability
+`Some(true)`, fallback `None`. All cases used Rec.2020 storage, Clip mapping,
+source alpha 0.5 and the sample's opaque white backdrop. These percentages are
+observed on this GPU, not cross-device limits; the defined budgets are unchanged.
+
+| Metadata / patch | Captures | GPU result | Worst fraction of channel budget |
+| --- | --- | --- | --- |
+| Compact v4 sRGB / Green | Off | PASS, 9 center pixels | 32.4% |
+| Compact v4 P3 / Green | Off | PASS, 9 center pixels | 20.9% |
+| Compact v4 Adobe-compatible / Green | Off | PASS, 9 center pixels | 17.2% |
+| sRGB2014 / Green | Off | PASS, 9 center pixels | 32.4% |
+| sRGB2014 / Mid gray | Off | PASS, 9 center pixels | 55.3% |
+| sRGB2014 / Mid gray | Nested opacity + blur | PASS, 9 center pixels | 0.1% |
+
+Observed sRGB2014 Mid gray decoding was `[0.0272147727; 3]`, XYZ D65
+`[0.0258687606, 0.0272139801, 0.0296451330]`, coordinates
+`[0.3126970330, 0.3289578089]`, and stored half words
+`[0x22f8, 0x22f7, 0x22f8, 0x3800]`. These match the independent references
+at the inspector's displayed precision and retain the small neutral offset.
+The direct readback was `[0.5131836; 3]` with alpha 1; nested readback was
+`[0.7470703; 3]` with alpha 1. Source/transfer ICC labels, changing source
+markers, control wrapping, sample retention while scrolling and returning from
+sRGB2014 to named Adobe RGB/Mid gray were verified. No implementation change
+was needed. This completes the earlier pending published-mode UI check; it
+remains a composition validation, not a measurement of physical monitor output.
