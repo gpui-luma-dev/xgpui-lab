@@ -12,7 +12,7 @@ Legal code: https://creativecommons.org/licenses/by-nc-sa/3.0/legalcode.en
 This WGSL adaptation modifies the original GLSL: explicit host parameters,
 top-left UV conversion, trace state instead of an out parameter, defined
 reversed smoothstep, guarded normal/trace arithmetic, and optional lower-detail
-normals. The application expands the two constant-bound loops for the v1 API.
+normals. The application expands the two constant-bound loops for the shader-paint API.
 Default tracing uses 32 steps, 3 geometry octaves and 5 normal octaves. The
 original optional 3x3 supersampling is disabled. The procedural noise,
 height-field tracing, sky/reflection/refraction and gamma-style output remain.

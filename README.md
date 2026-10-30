@@ -181,10 +181,23 @@ The reviewed [coverage matrix](validation/objc2-coverage.md) maps rendering path
 
 `just consumer-audit` builds published xgpui/platform 1.0.0 and all six extensions 0.2.0 in an isolated temporary consumer, with a fresh target and no local patches or Cargo configuration. Registry caches may be reused. Reports, exact lockfile, dependency graph, legacy dependency chains, and compiler logs are retained under `artifacts/consumer-audit/`. This proves published-consumer buildability; it does not validate unpublished migration changes or the entire Luma/lab stack. The matrix lists candidate-release verification and legacy dependency removal as separate gates.
 
+## Shader API naming migration
+
+Requires the sibling xgpui checkout with
+[the shader naming change](https://github.com/gpui-luma-dev/xgpui/pull/84) applied. Shader
+paints use `xgpui_shader::shader_paint::ShaderProgram::new`; the removed
+`experimental` imports and `new_v1` constructor are no longer used.
+`instanced::ShaderProgram<T>::new` is unchanged. The rendering and parameter
+contracts remain the same, including shader-paint loop restrictions.
+
+Grid and Seascape benchmark reports now identify APIs as `shader_paint` and
+`instanced`, and capture filenames use `shader-paint` and `instanced` in place
+of the previous version labels. Update scripts that consume these output names.
+
 ## Shader Depot: Grid (app-only API validation)
 
 In the Shader workspace, select **Shader Depot: Grid** for side-by-side
-v1 declarative paint and v2 typed instance previews. Programs compile once;
+shader paint and instanced shader previews. Programs compile once;
 sliders update the four scalar fields. The typed instance is 16 bytes with
 field offsets 0, 4, 8, 12. Pulse width/speed use the upstream cosine interpolation;
 turn pulse off to inspect the base line width. Switching away suspends animation.
@@ -196,8 +209,8 @@ All sample code, controls, tests and reports belong to this app; this sample
 requires no changes to the sibling `xgpui` repository. `src/shader/grid.wgsl`
 contains the shared grid calculation, with host-owned wrappers constructed
 in `src/shader/grid.rs`. The original unused resources and debug variables
-are omitted. Rust uses `ShaderParameters::float` for v1 and `ShaderInstance`
-field descriptions for v2.
+are omitted. Rust uses `ShaderParameters::float` for shader paints and `ShaderInstance`
+field descriptions for instanced shaders.
 
 ```sh
 cargo test shader::grid::tests
@@ -240,12 +253,12 @@ or framework changes are required. The 32-byte typed record holds eight
 scalars at offsets 0 through 28. The controls expose time scrubbing,
 wave height/choppiness/speed/frequency, camera phase, exposure and normal
 detail. The pane starts paused; use **Animate / Pause** to animate, and
-**Compare v1 / v2** to display both APIs. Scrubbing pauses animation;
+**Compare rendering models** to display both APIs. Scrubbing pauses animation;
 switching away suspends it while preserving the animation preference.
 
-The existing **v1 API rejects loops**, even with constant bounds. The app
+The existing **shader-paint API rejects loops**, even with constant bounds. The app
 expands only the two marked loops (5 octave iterations and 32 trace steps)
-for its v1 source. The same WGSL source retains loops for v2. This is a
+for its shader-paint source. The same WGSL source retains loops for instanced shaders. This is a
 manual GLSL-to-WGSL adaptation, not direct GLSL ingestion or a generic
 Shadertoy loader. Host inputs replace `iTime`, `iResolution` and the mouse
 camera phase. UV Y is inverted for Shadertoy's bottom-left coordinates;
@@ -261,13 +274,15 @@ cargo run --features grid-wgpu -- --shader-benchmark seascape --output artifacts
 
 Reports and PNGs are written under `seascape/` in the output directory.
 Checks cover the analytic sky against an independent CPU calculation,
-v1/v2 image similarity, time changes at the same extent, parameter and
-aspect-ratio changes, clipping, opacity, replay and immutable v1 snapshots.
+image similarity between shader paints and instanced shaders, time changes at
+the same extent, parameter and
+aspect-ratio changes, clipping, opacity, replay and immutable shader-paint snapshots.
 Optional wgpu checks compare each API with its native rendering. Similarity
 requires mean RGB error ≤1/255 and at most 0.5% of pixels differing by more
 than 24/255; the report also retains maximum error. Procedural sine-hash
 noise and sharp highlights can amplify differences between looped and
-expanded evaluation, so bit-exact v1/v2 parity is not required. These checks
+expanded evaluation, so bit-exact parity between the rendering models is not
+required. These checks
 do not certify pixel parity with the original Shadertoy GLSL.
 
 The benchmark records 12 changing frames per API at 320×180, including scene

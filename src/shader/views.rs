@@ -307,7 +307,7 @@ impl ShaderPage {
     fn wgsl(&self) -> anyhow::Result<AnyElement> {
         let programs = self.programs.as_ref().map_err(|error| anyhow::anyhow!("{error:#}"))?;
         let wash = programs.wash.paint(
-            xgpui_shader::experimental::ShaderParameters::new()
+            xgpui_shader::shader_paint::ShaderParameters::new()
                 .float("progress", self.progress + if self.animated { 0.25 * self.time.sin() } else { 0. })
                 .vec3("tint", [0.95, 0.15, 0.35])
                 .float("alpha", self.shader_alpha),
