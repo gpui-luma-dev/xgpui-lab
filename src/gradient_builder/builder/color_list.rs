@@ -137,6 +137,11 @@ impl GradientBuilder {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Clicking the canvas endpoint is outside this list. Its deferred clear
+        // must not discard the selected point while that endpoint owns the drag.
+        if self.active_field_drag.is_some() && matches!(input, ListBoxInput::ClearSelection) {
+            return;
+        }
         let update = self.point_list.state.apply(input);
         for event in update.events {
             match event {

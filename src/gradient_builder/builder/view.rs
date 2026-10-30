@@ -98,6 +98,16 @@ impl Render for GradientBuilder {
             window.request_animation_frame();
         }
         self.mesh_palette_last_frame = now;
+        if self.spread_animation && self.selected_tab == BuilderTab::Freeform {
+            let elapsed=now.duration_since(self.spread_last_frame).as_secs_f32().min(0.1);
+            self.spread_phase=(self.spread_phase+elapsed*std::f32::consts::TAU*self.spread_speed).rem_euclid(std::f32::consts::TAU);
+            self.spread_percent=super::freeform::animated_spread(self.spread_phase);
+            self.spread_slider.update(cx,|slider,cx|slider.set_value(self.spread_percent,cx));
+            self.preview_image_cache=None;
+            let _=self.ensure_preview_image_cache(self.preview_size,cx);
+            window.request_animation_frame();
+        }
+        self.spread_last_frame=now;
         let chrome = self.look.chrome();
         let rotation_deg = self.rotation_deg;
         let stops = self.preview_stops(cx);
@@ -298,9 +308,25 @@ impl Render for GradientBuilder {
                 let mesh_shader_preview = mesh_shader_active.then(|| self.mesh_shader_cache.element(
                     &self.mesh_points, frame_size, self.mesh_background, self.mesh_controls_visible, mesh_p3_active,
                 ));
-                self.mesh_metrics.sample(now, now.elapsed(), mesh_animating);
-                let mesh_hud = format!("CPU prep  {:.2} ms\nUI FPS  {}", self.mesh_metrics.cpu_ms,
-                    self.mesh_metrics.fps.map(|fps| format!("{fps:.0}")).unwrap_or_else(|| "—".into()));
+                let freeform_p3_active = self.selected_tab == BuilderTab::Freeform && self.freeform_p3 && cfg!(target_os = "macos") && super::p3::available(window);
+                let freeform_gpu_active = self.selected_tab == BuilderTab::Freeform && self.freeform_gpu;
+                let freeform_gpu_preview = if freeform_gpu_active {
+                    let field=super::super::paint::build_color_field(&self.mesh_points,self.mesh_background,self.spread_percent,self.freeform_hsl,
+                        &super::super::paint::FieldShape {mixing:self.freeform_mixing,background_weight:self.field_background_weight,
+                            point_transforms:&self.point_transforms,point_spreads:&self.point_spreads,softness_percent:self.softness_percent});
+                    Some(self.field_shader_cache.element(field,freeform_p3_active))
+                } else {None};
+                let freeform_p3_preview = if freeform_p3_active && !freeform_gpu_active {
+                    self.cached_preview_image().map(|image| self.freeform_p3_cache.element(image))
+                } else { None };
+                let (metrics, animating) = if self.selected_tab == BuilderTab::Freeform {
+                    (&mut self.freeform_metrics, self.spread_animation)
+                } else {
+                    (&mut self.mesh_metrics, mesh_animating)
+                };
+                metrics.sample(now, now.elapsed(), animating);
+                let mesh_hud = format!("CPU prep  {:.2} ms\nUI FPS  {}", metrics.cpu_ms,
+                    metrics.fps.map(|fps| format!("{fps:.0}")).unwrap_or_else(|| "—".into()));
                 let preview_surface = div()
                     .id("color-viz-mesh-preview")
                     .on_mouse_down(
@@ -328,17 +354,19 @@ impl Render for GradientBuilder {
                             .w(frame_size.width)
                             .h(frame_size.height)
                             .overflow_hidden()
-                            .when_some(if mesh_shader_active { None } else { self.cached_preview_image() }, |this, image| {
+                            .when_some(if mesh_shader_active || freeform_p3_active || freeform_gpu_active { None } else { self.cached_preview_image() }, |this, image| {
                                 this.child(img(ImageSource::Render(image)).size_full().absolute().top_0().left_0())
                             })
                             .when_some(mesh_shader_preview, |this, preview| this.child(preview))
-                            .when(self.selected_tab == BuilderTab::Mesh, |this| this.child(
+                            .when_some(freeform_p3_preview, |this, preview| this.child(preview))
+                            .when_some(freeform_gpu_preview, |this, preview| this.child(preview))
+                            .child(
                                 div().absolute().top(px(8.)).left(px(8.))
                                     .px_2().py_1().rounded(px(4.))
                                     .bg(gpui::hsla(0., 0., 0., 0.65))
                                     .text_color(gpui::white()).text_size(px(11.))
                                     .child(mesh_hud),
-                            ))
+                            )
                             .child(
                                 canvas(|bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal), {
                                     let builder = cx.entity();
@@ -392,7 +420,8 @@ impl Render for GradientBuilder {
                                         self.selected_mesh_point == Some(point_index),
                                         cx.entity(),
                                     )
-                                })),
+                                }))
+                                .when_some(self.field_handle(frame_size, cx), |this, handle| this.child(handle)),
                         )
                     });
                 let preview = div()

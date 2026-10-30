@@ -2101,7 +2101,7 @@ dependencies = [
  "toml 0.8.23",
  "ttf-parser",
  "web-time",
- "xgpui",
+ "xgpui 1.0.0",
 ]
 
 [[package]]
@@ -2114,7 +2114,7 @@ dependencies = [
  "palette",
  "smallvec",
  "tiny-skia 0.11.4",
- "xgpui",
+ "xgpui 1.0.0",
 ]
 
 [[package]]
@@ -2125,7 +2125,7 @@ dependencies = [
  "gpui-luma",
  "serde",
  "toml 0.8.23",
- "xgpui",
+ "xgpui 1.0.0",
 ]
 
 [[package]]
@@ -6741,6 +6741,75 @@ checksum = "bec9e4a500ca8864c5b47b8b482a73d62e4237670e5b5f1d6b9e3cae50f28f2b"
 [[package]]
 name = "xgpui"
 version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56ed15bfa2c95f329f996feb8a016d1f0f6b7a21f4e45850a34e9cd88455c112"
+dependencies = [
+ "accesskit",
+ "anyhow",
+ "async-channel",
+ "async-task",
+ "backtrace",
+ "bitflags 2.13.2",
+ "chrono",
+ "collections-gpui-unofficial",
+ "ctor",
+ "derive_more",
+ "embed-resource",
+ "etagere",
+ "futures",
+ "futures-concurrency",
+ "getrandom 0.3.4",
+ "gpui-shared-string-gpui-unofficial",
+ "gpui-util-gpui-unofficial",
+ "heapless",
+ "http-client-gpui-unofficial",
+ "image",
+ "inventory",
+ "itertools",
+ "libc",
+ "log",
+ "lyon",
+ "num_cpus",
+ "objc2-core-foundation",
+ "objc2-core-video",
+ "parking",
+ "parking_lot",
+ "pin-project",
+ "pollster 0.4.0",
+ "postage",
+ "profiling",
+ "proptest",
+ "rand 0.9.5",
+ "raw-window-handle",
+ "refineable-gpui-unofficial",
+ "regex",
+ "resvg",
+ "scheduler-gpui-unofficial",
+ "schemars",
+ "seahash",
+ "serde",
+ "serde_json",
+ "slotmap",
+ "smallvec",
+ "spin 0.10.1",
+ "strum",
+ "sum-tree-gpui-unofficial",
+ "taffy",
+ "thiserror 2.0.20",
+ "ttf-parser",
+ "url",
+ "usvg",
+ "uuid",
+ "waker-fn",
+ "web-time",
+ "windows 0.62.2",
+ "xgpui-macros",
+ "zed-scap",
+]
+
+[[package]]
+name = "xgpui"
+version = "1.1.0"
 dependencies = [
  "accesskit",
  "anyhow",
@@ -6808,7 +6877,7 @@ dependencies = [
 
 [[package]]
 name = "xgpui-apple"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "async-task",
@@ -6842,22 +6911,22 @@ dependencies = [
  "pathfinder_geometry",
  "smallvec",
  "thiserror 2.0.20",
- "xgpui",
+ "xgpui 1.1.0",
  "zed-font-kit",
 ]
 
 [[package]]
 name = "xgpui-color"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "xgpui-gamut"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "bytemuck",
  "objc2-metal 0.3.2",
- "xgpui",
+ "xgpui 1.1.0",
  "xgpui-apple",
  "xgpui-color",
  "xgpui-shader",
@@ -6893,7 +6962,7 @@ dependencies = [
  "tiny-skia 0.11.4",
  "tracing",
  "unicode-segmentation",
- "xgpui",
+ "xgpui 1.1.0",
  "xgpui-apple",
  "xgpui-color",
  "xgpui-gamut",
@@ -6907,7 +6976,7 @@ dependencies = [
 
 [[package]]
 name = "xgpui-linux"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -6941,7 +7010,7 @@ dependencies = [
  "wayland-protocols-plasma",
  "wayland-protocols-wlr",
  "x11rb",
- "xgpui",
+ "xgpui 1.1.0",
  "xgpui-wgpu",
  "xkbcommon",
  "zed-scap",
@@ -6950,7 +7019,7 @@ dependencies = [
 
 [[package]]
 name = "xgpui-macos"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "accesskit",
  "accesskit_macos",
@@ -6980,7 +7049,7 @@ dependencies = [
  "smallvec",
  "strum",
  "uuid",
- "xgpui",
+ "xgpui 1.1.0",
  "xgpui-apple",
 ]
 
@@ -6996,7 +7065,7 @@ dependencies = [
 
 [[package]]
 name = "xgpui-media"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "half",
@@ -7004,7 +7073,7 @@ dependencies = [
  "objc2-core-foundation",
  "objc2-core-video",
  "refineable-gpui-unofficial",
- "xgpui",
+ "xgpui 1.1.0",
  "xgpui-apple",
  "xgpui-color",
  "xgpui-shader",
@@ -7013,22 +7082,22 @@ dependencies = [
 
 [[package]]
 name = "xgpui-parley"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "parley",
  "skrifa 0.44.0",
  "tiny-skia 0.12.0",
- "xgpui",
+ "xgpui 1.1.0",
 ]
 
 [[package]]
 name = "xgpui-platform"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
- "xgpui",
+ "xgpui 1.1.0",
  "xgpui-linux",
  "xgpui-macos",
  "xgpui-web",
@@ -7038,7 +7107,7 @@ dependencies = [
 
 [[package]]
 name = "xgpui-shader"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -7051,7 +7120,7 @@ dependencies = [
  "unicode-bidi",
  "unicode-segmentation",
  "windows 0.62.2",
- "xgpui",
+ "xgpui 1.1.0",
  "xgpui-apple",
  "xgpui-wgpu",
  "xgpui-windows",
@@ -7059,16 +7128,16 @@ dependencies = [
 
 [[package]]
 name = "xgpui-svg"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "web-time",
- "xgpui",
+ "xgpui 1.1.0",
 ]
 
 [[package]]
 name = "xgpui-web"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -7090,13 +7159,13 @@ dependencies = [
  "wasm_thread",
  "web-sys",
  "web-time",
- "xgpui",
+ "xgpui 1.1.0",
  "xgpui-wgpu",
 ]
 
 [[package]]
 name = "xgpui-wgpu"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -7116,13 +7185,13 @@ dependencies = [
  "unicode-segmentation",
  "web-sys",
  "wgpu",
- "xgpui",
+ "xgpui 1.1.0",
  "zed-font-kit",
 ]
 
 [[package]]
 name = "xgpui-windows"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "accesskit",
  "accesskit_windows",
@@ -7145,7 +7214,7 @@ dependencies = [
  "windows-core 0.62.2",
  "windows-numerics 0.3.1",
  "windows-registry",
- "xgpui",
+ "xgpui 1.1.0",
 ]
 
 [[package]]

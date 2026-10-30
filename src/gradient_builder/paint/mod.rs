@@ -7,7 +7,7 @@ pub use mesh::{shader_mesh_grid, rasterize_mesh_guides, mesh_dimensions, rasteri
 pub use types::{GradientType, MeshPoint, PreviewRenderer, color_at_position, sorted_stops};
 
 mod freeform;
-pub use freeform::{FieldShape, rasterize_freeform_preview};
+pub use freeform::{build_color_field, FieldShape, rasterize_freeform_preview};
 
 mod adjustments;
 pub use adjustments::{ImageAdjustments, save_preview_png};

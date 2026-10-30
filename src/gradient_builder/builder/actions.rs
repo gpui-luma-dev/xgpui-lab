@@ -16,7 +16,7 @@ impl GradientBuilder {
         match self.selected_tab {
             BuilderTab::Gradients => !self.preview_p3 && !self.preview_renderer.is_shader(),
             BuilderTab::Mesh => !self.mesh_shader_enabled && !self.mesh_p3,
-            BuilderTab::Freeform => true,
+            BuilderTab::Freeform => !self.freeform_p3 && !self.freeform_gpu,
         }
     }
 
@@ -130,6 +130,7 @@ impl GradientBuilder {
             }
             self.render_task = None;
             self.active_mesh_drag = None;
+        self.active_field_drag = None;
             self.color_picker_open = false;
             let _ = self.ensure_preview_image_cache(self.preview_size, cx);
             cx.notify();
@@ -295,6 +296,7 @@ impl GradientBuilder {
         self.next_point_id += self.mesh_points.len() as u64;
         if self.selected_tab == BuilderTab::Freeform {
             self.point_spreads = vec![100.0; self.mesh_points.len()];
+            self.point_transforms = vec![[0., 1.]; self.mesh_points.len()];
         }
         self.sync_freeform_buttons(cx);
         self.mesh_background = default_mesh_background();
@@ -302,6 +304,7 @@ impl GradientBuilder {
         self.sync_point_spread(cx);
         self.mesh_color_target = MeshColorTarget::Background;
         self.active_mesh_drag = None;
+        self.active_field_drag = None;
         self.color_picker_open = false;
         let _ = self.ensure_preview_image_cache(self.preview_size, cx);
         cx.notify();
@@ -533,6 +536,7 @@ impl GradientBuilder {
     }
 
     pub(super) fn uses_render_preview(&self, cx: &Context<Self>) -> bool {
+        if self.selected_tab == BuilderTab::Freeform && self.freeform_gpu { return false; }
         if self.selected_tab == BuilderTab::Mesh && self.mesh_shader_enabled { return false; }
         if self.selected_tab == BuilderTab::Gradients && self.preview_renderer.is_shader() { return false; }
         if self.selected_tab != BuilderTab::Gradients || !self.image_adjustments.is_neutral() {
@@ -646,6 +650,9 @@ impl GradientBuilder {
                     self.spread_percent,
                     self.freeform_hsl,
                     &super::super::paint::FieldShape {
+                        mixing: self.freeform_mixing,
+                        background_weight: self.field_background_weight,
+                        point_transforms: &self.point_transforms,
                         point_spreads: &self.point_spreads,
                         softness_percent: self.softness_percent,
                     },
@@ -705,6 +712,9 @@ impl GradientBuilder {
                 self.spread_percent,
                 self.freeform_hsl,
                 &super::super::paint::FieldShape {
+                    mixing: self.freeform_mixing,
+                    background_weight: self.field_background_weight,
+                    point_transforms: &self.point_transforms,
                     point_spreads: &self.point_spreads,
                     softness_percent: self.softness_percent,
                 },
@@ -772,6 +782,7 @@ impl GradientBuilder {
         }
         self.sync_visibility_button(cx);
         self.active_mesh_drag = None;
+        self.active_field_drag = None;
         self.preview_image_cache = None;
         let _ = self.ensure_preview_image_cache(self.preview_size, cx);
         cx.notify();
@@ -781,12 +792,17 @@ impl GradientBuilder {
         self.selected_mesh_point = Some(point_index);
         self.sync_point_spread(cx);
         self.mesh_color_target = MeshColorTarget::Point(point_index);
+        self.active_field_drag = None;
         self.active_mesh_drag = Some(point_index);
         self.color_picker_open = false;
         cx.notify();
     }
 
     pub(super) fn handle_mesh_drag_move(&mut self, position: gpui::Point<Pixels>, cx: &mut Context<Self>) {
+        if self.active_field_drag.is_some() {
+            self.drag_field_handle(position, cx);
+            return;
+        }
         let Some(point_index) = self.active_mesh_drag else {
             return;
         };
@@ -815,7 +831,8 @@ impl GradientBuilder {
     }
 
     pub(super) fn finish_mesh_drag(&mut self, cx: &mut Context<Self>) {
-        if self.active_mesh_drag.take().is_some() {
+        let field_dragged = self.active_field_drag.take().is_some();
+        if self.active_mesh_drag.take().is_some() || field_dragged {
             cx.notify();
         }
     }

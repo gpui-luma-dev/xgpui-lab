@@ -1,19 +1,22 @@
-//! Reinterpret native mesh encoded RGB as Display P3, then decode on the GPU.
+//! Reinterpret an encoded RGB producer as Display P3, then decode on the GPU.
 #[cfg(target_os = "macos")]
 mod metal {
     use anyhow::{Context as _, Result};
     use gpui::{CustomContent, DevicePixels, Size};
     use gpui_apple::{custom_draw::{MetalCustomContext, MetalCustomOutput, MetalWideSdrOutput}, metal::*};
     use std::{any::Any, sync::{Arc, Mutex}};
+    #[cfg(test)]
     use xgpui_shader::MeshGradient;
 
     const SOURCE: &str = r#"
 #include <metal_stdlib>
 using namespace metal;
-kernel void mesh_p3(texture2d<float, access::read> src [[texture(0)]],
+kernel void mesh_p3(texture2d<float, access::sample> src [[texture(0)]],
                     texture2d<half, access::write> dst [[texture(1)]], uint2 p [[thread_position_in_grid]]) {
     if (p.x >= dst.get_width() || p.y >= dst.get_height()) return;
-    float4 c = src.read(p);
+    constexpr sampler linear_sampler(coord::normalized, address::clamp_to_edge, filter::linear);
+    float2 uv = (float2(p) + 0.5) / float2(dst.get_width(), dst.get_height());
+    float4 c = src.sample(linear_sampler, uv);
     float3 rgb = select(pow((c.rgb + 0.055) / 1.055, float3(2.4)), c.rgb / 12.92, c.rgb <= 0.04045);
     dst.write(half4(half3(rgb * c.a), half(c.a)), p);
 }
@@ -24,7 +27,7 @@ kernel void mesh_p3(texture2d<float, access::read> src [[texture(0)]],
     unsafe impl Send for Pipeline {}
     unsafe impl Sync for Pipeline {}
     pub struct Paint {
-        mesh: Arc<MeshGradient>,
+        source: Arc<dyn CustomContent>,
         pipeline: Arc<Pipeline>,
         cached: Mutex<Option<(u64, Size<DevicePixels>, MetalWideSdrOutput)>>,
     }
@@ -32,18 +35,18 @@ kernel void mesh_p3(texture2d<float, access::read> src [[texture(0)]],
     unsafe impl Send for Paint {}
     unsafe impl Sync for Paint {}
     impl Paint {
-        pub fn new(mesh: Arc<MeshGradient>, pipeline: Arc<Pipeline>) -> Self {
-            Self { mesh, pipeline, cached: Mutex::new(None) }
+        pub fn new(source: Arc<dyn CustomContent>, pipeline: Arc<Pipeline>) -> Self {
+            Self { source, pipeline, cached: Mutex::new(None) }
         }
     }
     impl std::fmt::Debug for Paint {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.debug_struct("DisplayP3Mesh").field("mesh", &self.mesh).finish_non_exhaustive()
+            f.debug_struct("DisplayP3Paint").field("source", &self.source).finish_non_exhaustive()
         }
     }
     impl CustomContent for Paint {
         fn prepare(&self, backend: &dyn Any, extent: Size<DevicePixels>) -> Result<Box<dyn Any>> {
-            let ctx = backend.downcast_ref::<MetalCustomContext>().context("P3 mesh requires native Metal")?;
+            let ctx = backend.downcast_ref::<MetalCustomContext>().context("P3 preview requires native Metal")?;
             let mut cache = self.cached.lock().map_err(|_| anyhow::anyhow!("P3 mesh cache poisoned"))?;
             if let Some((key, size, output)) = cache.as_ref()
                 && *key == ctx.cache_key() && *size == extent {
@@ -59,8 +62,8 @@ kernel void mesh_p3(texture2d<float, access::read> src [[texture(0)]],
                 let pipeline = ctx.device.newComputePipelineStateWithFunction_error(&function).map_err(anyhow::Error::msg)?;
                 *pipelines = Some((ctx.cache_key(), ctx.queue.clone(), pipeline));
             }
-            let prepared = self.mesh.prepare(backend, extent)?;
-            let source = prepared.downcast::<MetalCustomOutput>().map_err(|_| anyhow::anyhow!("Unexpected native mesh output"))?;
+            let prepared = self.source.prepare(backend, extent)?;
+            let source = prepared.downcast::<MetalCustomOutput>().map_err(|_| anyhow::anyhow!("Unexpected native RGB output"))?;
             let descriptor = TextureDescriptor::new();
             unsafe { descriptor.setWidth(extent.width.0 as usize); descriptor.setHeight(extent.height.0 as usize); }
             descriptor.setPixelFormat(MTLPixelFormat::RGBA16Float);
