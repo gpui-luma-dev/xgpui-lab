@@ -11,6 +11,7 @@ pub enum Mode {
     CompactSrgb,
     CompactP3,
     CompactAdobe,
+    Srgb2014,
 }
 impl Mode {
     pub fn next(self) -> Self {
@@ -20,7 +21,8 @@ impl Mode {
             Self::Sampled => Self::CompactSrgb,
             Self::CompactSrgb => Self::CompactP3,
             Self::CompactP3 => Self::CompactAdobe,
-            Self::CompactAdobe => Self::Named,
+            Self::CompactAdobe => Self::Srgb2014,
+            Self::Srgb2014 => Self::Named,
         }
     }
     pub fn label(self) -> &'static str {
@@ -31,6 +33,7 @@ impl Mode {
             Self::CompactSrgb => "ICC sRGB (Compact v4)",
             Self::CompactP3 => "ICC P3 (Compact v4)",
             Self::CompactAdobe => "ICC Adobe-compatible (Compact v4)",
+            Self::Srgb2014 => "ICC sRGB2014 (v2 sampled)",
         }
     }
     pub fn color(self, named: ImageColor) -> anyhow::Result<PixelColor> {
@@ -41,12 +44,13 @@ impl Mode {
             Self::CompactSrgb => 2,
             Self::CompactP3 => 3,
             Self::CompactAdobe => 4,
+            Self::Srgb2014 => 5,
         };
         Ok(PixelColor::Custom { rgb: fixtures()?[index].clone(), alpha: AlphaMode::Straight })
     }
 }
-static FIXTURES: OnceLock<Result<[Arc<RgbDefinition>; 5], String>> = OnceLock::new();
-pub fn fixtures() -> anyhow::Result<&'static [Arc<RgbDefinition>; 5]> {
+static FIXTURES: OnceLock<Result<[Arc<RgbDefinition>; 6], String>> = OnceLock::new();
+pub fn fixtures() -> anyhow::Result<&'static [Arc<RgbDefinition>; 6]> {
     FIXTURES
         .get_or_init(|| {
             let parse = |bytes: &[u8]| {
@@ -58,6 +62,7 @@ pub fn fixtures() -> anyhow::Result<&'static [Arc<RgbDefinition>; 5]> {
                 parse(include_bytes!("../../../assets/colorimetry/icc/compact/sRGB-v4.icc"))?,
                 parse(include_bytes!("../../../assets/colorimetry/icc/compact/DisplayP3-v4.icc"))?,
                 parse(include_bytes!("../../../assets/colorimetry/icc/compact/AdobeCompat-v4.icc"))?,
+                parse(include_bytes!("../../../assets/colorimetry/icc/sRGB2014.icc"))?,
             ])
         })
         .as_ref()
@@ -102,8 +107,15 @@ mod tests {
     #[test]
     fn published_profiles_cycle_and_match_independent_xyz() {
         let mut mode = Mode::Named;
-        let expected_modes =
-            [Mode::Parametric, Mode::Sampled, Mode::CompactSrgb, Mode::CompactP3, Mode::CompactAdobe, Mode::Named];
+        let expected_modes = [
+            Mode::Parametric,
+            Mode::Sampled,
+            Mode::CompactSrgb,
+            Mode::CompactP3,
+            Mode::CompactAdobe,
+            Mode::Srgb2014,
+            Mode::Named,
+        ];
         for next in expected_modes {
             mode = mode.next();
             assert_eq!(mode, next);
@@ -129,6 +141,12 @@ mod tests {
                 [0.021854144243416727, 0.022993327329977945, 0.025041061344471423],
                 0.022993327329977945,
             ),
+            (
+                Mode::Srgb2014,
+                [0.3576171193575301, 0.7151362416068924, 0.11920756219116285],
+                [0.02586876064369192, 0.027213980056848303, 0.02964513297459798],
+                0.02721477274291892,
+            ),
         ] {
             let color = mode.color(ImageColor::SRGB).unwrap();
             for (rgba, expected) in [([0., 1., 0., 0.5], green), ([0.18, 0.18, 0.18, 0.5], gray)] {
@@ -144,6 +162,22 @@ mod tests {
             }
             assert_eq!(inspect(&color, [0.18, 0.18, 0.18, 0.]).unwrap().xyz, [0.; 3]);
         }
+    }
+
+    #[test]
+    fn srgb2014_keeps_its_encoded_white_and_changes_gray_interpretation() {
+        let color = Mode::Srgb2014.color(ImageColor::SRGB).unwrap();
+        let sample = inspect(&color, [1., 1., 1., 1.]).unwrap();
+        let expected = [0.9505411229429714, 0.9999708729491109, 1.0893029772703657];
+        for (actual, expected) in sample.xyz.into_iter().zip(expected) {
+            assert!((actual - expected).abs() <= 192. * f64::EPSILON);
+        }
+        assert!((sample.xyz[2] - xgpui_color::WhitePoint::D65.xyz()[2]).abs() > 1e-4);
+        let compact = Mode::CompactSrgb.color(ImageColor::SRGB).unwrap();
+        assert_ne!(
+            inspect(&color, [0.18, 0.18, 0.18, 1.]).unwrap().decoded,
+            inspect(&compact, [0.18, 0.18, 0.18, 1.]).unwrap().decoded
+        );
     }
 
     #[test]
