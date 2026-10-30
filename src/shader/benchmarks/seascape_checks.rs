@@ -38,7 +38,7 @@ fn scene(
             content_mask: mask,
             opacity,
             scale_factor: 1.,
-            program: programs.v2.scene_program(),
+            program: programs.instanced.scene_program(),
             data,
         }));
     } else {
@@ -135,19 +135,19 @@ pub(crate) fn run(output: &std::path::Path, cancel: &std::sync::atomic::AtomicBo
         ),
     ];
     let mut first = None;
-    let mut first_v1 = None;
-    let retained_v1 = scene(&programs, SeaInstance::default(), false, 320, 180, false, 1.)?;
+    let mut first_shader_paint = None;
+    let retained_shader_paint = scene(&programs, SeaInstance::default(), false, 320, 180, false, 1.)?;
     for (case, (p, width, height)) in cases.into_iter().enumerate() {
         crate::benchmarks::check_cancel(cancel)?;
-        let v1 = render(native.as_mut(), &programs, p, false, width, height, false, 1.)?;
-        let v2 = render(native.as_mut(), &programs, p, true, width, height, false, 1.)?;
-        v1.save(output.join(format!("sea-{case}-v1.png")))?;
-        v2.save(output.join(format!("sea-{case}-v2.png")))?;
-        comparisons.push(compare(&v1, &v2, &format!("native v1/v2 case {case}"))?);
+        let shader_paint = render(native.as_mut(), &programs, p, false, width, height, false, 1.)?;
+        let instanced = render(native.as_mut(), &programs, p, true, width, height, false, 1.)?;
+        shader_paint.save(output.join(format!("sea-{case}-shader-paint.png")))?;
+        instanced.save(output.join(format!("sea-{case}-instanced.png")))?;
+        comparisons.push(compare(&shader_paint, &instanced, &format!("native shader paint/instanced case {case}"))?);
         if case == 0 {
             for x in [width / 4, width / 2, width * 3 / 4] {
                 let expected = sky_reference(width, height, x, 1);
-                for image in [&v1, &v2] {
+                for image in [&shader_paint, &instanced] {
                     let actual = image.get_pixel(x, 1);
                     ensure!(
                         actual.0[..3].iter().zip(expected).all(|(a, b)| a.abs_diff(b) <= 3),
@@ -156,21 +156,21 @@ pub(crate) fn run(output: &std::path::Path, cancel: &std::sync::atomic::AtomicBo
                     );
                 }
             }
-            ensure!(v2.pixels().all(|p| p.0[3] == 255), "opaque seascape expected");
+            ensure!(instanced.pixels().all(|p| p.0[3] == 255), "opaque seascape expected");
             ensure!(
-                v2.get_pixel(width / 2, height / 8).0 != v2.get_pixel(width / 2, height * 7 / 8).0,
+                instanced.get_pixel(width / 2, height / 8).0 != instanced.get_pixel(width / 2, height * 7 / 8).0,
                 "sky and sea must differ"
             );
-            first = Some(v2.clone());
-            first_v1 = Some(v1.clone());
+            first = Some(instanced.clone());
+            first_shader_paint = Some(shader_paint.clone());
         } else if case == 1 {
             let baseline = render(native.as_mut(), &programs, SeaInstance::default(), true, width, height, false, 1.)?;
-            let changed = baseline.pixels().zip(v2.pixels()).filter(|(a, b)| a.0 != b.0).count();
+            let changed = baseline.pixels().zip(instanced.pixels()).filter(|(a, b)| a.0 != b.0).count();
             ensure!(changed > 100, "time must change sea pixels at the same resolution");
         }
         for typed in [false, true] {
             let masked = render(native.as_mut(), &programs, p, typed, width, height, true, 0.5)?;
-            let original = if typed { &v2 } else { &v1 };
+            let original = if typed { &instanced } else { &shader_paint };
             for y in 0..height {
                 for x in 0..width {
                     let inside = x >= width / 4 && x < width * 3 / 4 && y >= height / 4 && y < height * 3 / 4;
@@ -187,11 +187,11 @@ pub(crate) fn run(output: &std::path::Path, cancel: &std::sync::atomic::AtomicBo
             #[cfg(feature = "grid-wgpu")]
             {
                 let wgpu = render(&mut portable, &programs, p, typed, width, height, false, 1.)?;
-                wgpu.save(output.join(format!("sea-{case}-wgpu-v{}.png", if typed { 2 } else { 1 })))?;
+                wgpu.save(output.join(format!("sea-{case}-wgpu-{}.png", if typed { "instanced" } else { "shader-paint" })))?;
                 comparisons.push(compare(
                     original,
                     &wgpu,
-                    &format!("native/wgpu v{} case {case}", if typed { 2 } else { 1 }),
+                    &format!("native/wgpu {} case {case}", if typed { "instanced" } else { "shader-paint" }),
                 )?);
             }
         }
@@ -199,10 +199,10 @@ pub(crate) fn run(output: &std::path::Path, cancel: &std::sync::atomic::AtomicBo
     // Retained old parameters remain immutable after other time/shape renders.
     let replay = render(native.as_mut(), &programs, SeaInstance::default(), true, 320, 180, false, 1.)?;
     ensure!(replay.as_raw() == first.as_ref().unwrap().as_raw(), "same snapshot must render deterministically");
-    let old_snapshot = native.render_scene_to_image(&retained_v1, size(DevicePixels(320), DevicePixels(180)))?;
+    let old_snapshot = native.render_scene_to_image(&retained_shader_paint, size(DevicePixels(320), DevicePixels(180)))?;
     ensure!(
-        old_snapshot.as_raw() == first_v1.as_ref().unwrap().as_raw(),
-        "v1 retained paint changed after parameter edits"
+        old_snapshot.as_raw() == first_shader_paint.as_ref().unwrap().as_raw(),
+        "shader paint snapshot changed after parameter edits"
     );
     let mut timing = Vec::new();
     for typed in [false, true] {
@@ -223,10 +223,10 @@ pub(crate) fn run(output: &std::path::Path, cancel: &std::sync::atomic::AtomicBo
             samples.push(start.elapsed().as_secs_f64() * 1000.);
         }
         samples.sort_by(f64::total_cmp);
-        timing.push(serde_json::json!({"api":if typed{"v2"}else{"v1"}, "frames":12,"median_ms":samples[6],"max_ms":samples[11]}));
+        timing.push(serde_json::json!({"api":if typed{"instanced"}else{"shader_paint"}, "frames":12,"median_ms":samples[6],"max_ms":samples[11]}));
     }
     Ok(
-        serde_json::json!({"checks":["public constructors", "32-byte typed ABI", "v1 expanded/v2 looped rendering", "analytic sky reference", "time updates", "shape and detail controls", "aspect ratio", "clip/opacity", "deterministic replay"],
+        serde_json::json!({"checks":["public constructors", "32-byte typed ABI", "shader paints expanded/instanced shaders looped rendering", "analytic sky reference", "time updates", "shape and detail controls", "aspect ratio", "clip/opacity", "deterministic replay"],
         "native_wgpu_parity":if cfg!(feature="grid-wgpu"){"passed"}else{"not run; enable grid-wgpu"},
         "comparisons":comparisons,"similarity_limits":{"mean_absolute_rgb_error":1,"pixels_over_24_fraction":0.005},
         "render_readback_timings":timing,"measurement":"CPU wall time including scene creation, GPU wait/readback at 320x180; not interactive FPS or GPU-only time.","errors":[]}),

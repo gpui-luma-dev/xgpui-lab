@@ -84,7 +84,7 @@ Cosine interpolation blob: 917b28fb1ff016a1662a36ccae8d49c9a4b9ad33
 Copyright 2019 WebGPU Samples Contributors.
 BSD-3-Clause; full notice and terms: licenses/ShaderDepot-BSD-3-Clause.txt.
 Adaptations replace bindings and entry points with the public xgpui-shader
-v1/v2 contracts and keep pulse interpolation on the application side.
+shader paint/instanced shader contracts and keep pulse interpolation on the application side.
 
 Shadertoy: Seascape adapts "Seascape" by Alexander Alekseev aka TDM - 2014.
 Contact: tdmaav@gmail.com
@@ -96,5 +96,5 @@ Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported:
 https://creativecommons.org/licenses/by-nc-sa/3.0/
 They are not covered by the application's Apache-2.0 license.
 Changes: GLSL translated to WGSL, explicit host parameters, UV orientation,
-trace state, numerical guards, optional normal detail, loop expansion for v1.
+trace state, numerical guards, optional normal detail, loop expansion for shader paint.
 See licenses/Seascape-CC-BY-NC-SA-3.0.txt for provenance and license links.

@@ -151,8 +151,8 @@ fn content(scene: &mut Scene, value: Arc<dyn CustomContent>) -> Weak<Tracked> {
     weak
 }
 fn wgsl() -> Result<Arc<dyn CustomContent>> {
-    use xgpui_shader::experimental::{ShaderProgram, ShaderParameters};
-    let p = ShaderProgram::new_v1(
+    use xgpui_shader::shader_paint::{ShaderProgram, ShaderParameters};
+    let p = ShaderProgram::new(
         "struct Parameters { color: vec4<f32>, } fn paint(input: PaintInput) -> vec4<f32> { return parameters.color; }",
     )?;
     Ok(Arc::new(p.paint(ShaderParameters::new().vec4("color", [0.25, 0.5, 0.75, 1.]))?))
