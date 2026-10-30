@@ -484,7 +484,10 @@ impl ShaderPage {
     }
 
     pub fn requires_sdr(&self) -> bool {
-        matches!(self.active_tab.as_ref(), "Typography" | "Brushes" | "Layer Effects")
+        // Metal supports typography captures in linear P3; keep the fallback
+        // on other backends until their wide capture paths are implemented.
+        matches!(self.active_tab.as_ref(), "Brushes" | "Layer Effects")
+            || (self.active_tab == "Typography" && !cfg!(target_os = "macos"))
     }
 
     pub fn suspend(&mut self, cx: &mut Context<Self>) {
