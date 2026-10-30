@@ -288,3 +288,7 @@ do not certify pixel parity with the original Shadertoy GLSL.
 The benchmark records 12 changing frames per API at 320×180, including scene
 creation, render, GPU wait and readback. It does not establish interactive
 FPS, Windows driver execution or browser/WebGL2 compatibility.
+
+## Chromaticity and color gamut lab
+
+Run `cargo run --bin chromaticity-lab` for a standalone CIE xy/u′v′ diagram, explicit color-pipeline inspector, and native-wide/sRGB rendering comparison. See [controls, dependencies and validation](validation/chromaticity-lab.md).
