@@ -394,7 +394,8 @@ impl Lab {
             },
         )
         .w_full()
-        .h(px(340.))
+        .h(px(680.))
+        .flex_shrink_0()
     }
     fn patch(&self, image: Option<MediaImage>, native: bool, scale: f32) -> AnyElement {
         let wide = self.wide && native;
@@ -440,8 +441,8 @@ impl Lab {
             sample.into_any_element()
         };
         div()
-            .flex_1()
-            .min_w_0()
+            .w_full()
+            .flex_shrink_0()
             .flex()
             .flex_col()
             .gap_2()
@@ -541,8 +542,8 @@ impl Render for Lab {
             .child(div().text_sm().child("Click controls to cycle. RGB steps: 0, 0.0001, 0.001, 0.18, 0.5, 1. Source/Transfer return ICC patches to named metadata. Synthetic ICC fixtures use Adobe RGB primaries, f64 curves and PCS-to-D65 adaptation. Probe presets are intentionally dark; choose Mid gray for visible differences."))
             .child(div().flex().gap_2().children((0..3).map(|c|self.button(format!("{}: {}",["R","G","B"][c],self.rgb[c]),9+c,cx))))
             .child(div().text_sm().child(format!("{} • active: {:?} • display reports wide gamut: {:?} • fallback: {:?}",if cfg!(target_os="macos") {"Metal"} else if cfg!(target_os="windows") {"D3D11"} else {"Native backend"},window.color_status().effective(),window.color_status().display_wide_gamut(),window.color_status().fallback())))
-            .child(div().flex().gap_5().child(div().flex_1().min_w_0().child(self.diagram()).child(div().flex().gap_3().children(NAMES.into_iter().enumerate().map(|(i,n)|div().text_color(rgb(COLORS[i])).child(n)))).child("White cross: D65 • gold cross: selected source. Axes start at zero; xy max 0.8 × 0.9, u′v′ max 0.65 × 0.65. CIE 1931 2° spectral locus + purple boundary (CIE 2019, CC BY-SA 4.0); no monitor measurement." )).child(div().w(px(440.)).text_sm().child(info)))
-            .child(div().flex().gap_4().child(self.patch(self.images.first().cloned(),true,window.scale_factor())).child(self.patch(self.images.get(1).cloned(),false,window.scale_factor())))
+            .child(div().flex().items_start().flex_shrink_0().gap_5().child(div().flex_1().min_w_0().child(self.diagram()).child(div().flex().gap_3().children(NAMES.into_iter().enumerate().map(|(i,n)|div().text_color(rgb(COLORS[i])).child(n)))).child("White cross: D65 • gold cross: selected source. Axes start at zero; xy max 0.8 × 0.9, u′v′ max 0.65 × 0.65. CIE 1931 2° spectral locus + purple boundary (CIE 2019, CC BY-SA 4.0); no monitor measurement." )).child(div().w(px(360.)).flex_shrink_0().flex().flex_col().gap_4().child(self.patch(self.images.first().cloned(),true,window.scale_factor())).child(self.patch(self.images.get(1).cloned(),false,window.scale_factor()))))
+            .child(div().flex_shrink_0().flex().flex_col().gap_2().child(div().text_lg().child("Decode tracking")).child(div().text_sm().child(info)))
             .child(self.error.clone().unwrap_or_else(||"P3 red lies slightly outside Rec.2020. Keep P3 storage to retain all of P3. Plotted gamuts do not imply monitor coverage. FP16 values are inspected from actual CPU-packed bytes; composition values are predicted, not a GPU readback.".into()))
     }
 }

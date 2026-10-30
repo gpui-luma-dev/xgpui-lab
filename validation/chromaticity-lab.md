@@ -105,3 +105,5 @@ independent XYZ/associated-FP16 references across P3/Rec.2020 storage. These tes
 exercise the new library adapter; they do not use its discarded transform engine.
 
 Validation: all 10 standalone tests, strict Clippy and a dev build pass. The real macOS Metal window was checked for named → parametric → sampled metadata switching with identical Mid gray pixels, changed decoded values/source marker, returning to named metadata, scrolling and retained patch rendering. WideGamutSdr was active with no fallback. This is consumer/UI evidence, not a monitor calibration or gamut measurement. Windows/Linux runtime remains unverified.
+
+The main view uses a 680 logical-pixel-tall chromaticity chart (twice the original height), with native-wide and clipped-sRGB samples stacked to its right. Decode tracking follows below the chart; scroll vertically to inspect it.
