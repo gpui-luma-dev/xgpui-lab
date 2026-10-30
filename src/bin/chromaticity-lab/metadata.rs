@@ -1,4 +1,4 @@
-//! Trusted synthetic profile fixtures; no file/image decoding.
+//! Trusted synthetic and published profile fixtures; no file/image decoding.
 use std::sync::{Arc, OnceLock};
 use xgpui_color::{LinearRgb, RgbDefinition, RgbSpace, icc::IccRgbProfile};
 use xgpui_media::pipeline::{AlphaMode, ImageColor, ImagePrimaries, PixelColor};
@@ -8,13 +8,19 @@ pub enum Mode {
     Named,
     Parametric,
     Sampled,
+    CompactSrgb,
+    CompactP3,
+    CompactAdobe,
 }
 impl Mode {
     pub fn next(self) -> Self {
         match self {
             Self::Named => Self::Parametric,
             Self::Parametric => Self::Sampled,
-            Self::Sampled => Self::Named,
+            Self::Sampled => Self::CompactSrgb,
+            Self::CompactSrgb => Self::CompactP3,
+            Self::CompactP3 => Self::CompactAdobe,
+            Self::CompactAdobe => Self::Named,
         }
     }
     pub fn label(self) -> &'static str {
@@ -22,6 +28,9 @@ impl Mode {
             Self::Named => "named",
             Self::Parametric => "ICC parametric fixture",
             Self::Sampled => "ICC sampled fixture",
+            Self::CompactSrgb => "ICC sRGB (Compact v4)",
+            Self::CompactP3 => "ICC P3 (Compact v4)",
+            Self::CompactAdobe => "ICC Adobe-compatible (Compact v4)",
         }
     }
     pub fn color(self, named: ImageColor) -> anyhow::Result<PixelColor> {
@@ -29,12 +38,15 @@ impl Mode {
             Self::Named => return Ok(named.into()),
             Self::Parametric => 0,
             Self::Sampled => 1,
+            Self::CompactSrgb => 2,
+            Self::CompactP3 => 3,
+            Self::CompactAdobe => 4,
         };
         Ok(PixelColor::Custom { rgb: fixtures()?[index].clone(), alpha: AlphaMode::Straight })
     }
 }
-static FIXTURES: OnceLock<Result<[Arc<RgbDefinition>; 2], String>> = OnceLock::new();
-pub fn fixtures() -> anyhow::Result<&'static [Arc<RgbDefinition>; 2]> {
+static FIXTURES: OnceLock<Result<[Arc<RgbDefinition>; 5], String>> = OnceLock::new();
+pub fn fixtures() -> anyhow::Result<&'static [Arc<RgbDefinition>; 5]> {
     FIXTURES
         .get_or_init(|| {
             let parse = |bytes: &[u8]| {
@@ -43,6 +55,9 @@ pub fn fixtures() -> anyhow::Result<&'static [Arc<RgbDefinition>; 2]> {
             Ok([
                 parse(include_bytes!("../../../assets/colorimetry/icc/parametric-rgb.icc"))?,
                 parse(include_bytes!("../../../assets/colorimetry/icc/sampled-rgb.icc"))?,
+                parse(include_bytes!("../../../assets/colorimetry/icc/compact/sRGB-v4.icc"))?,
+                parse(include_bytes!("../../../assets/colorimetry/icc/compact/DisplayP3-v4.icc"))?,
+                parse(include_bytes!("../../../assets/colorimetry/icc/compact/AdobeCompat-v4.icc"))?,
             ])
         })
         .as_ref()
@@ -84,6 +99,53 @@ pub fn inspect(color: &PixelColor, rgba: [f32; 4]) -> anyhow::Result<SourceSampl
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn published_profiles_cycle_and_match_independent_xyz() {
+        let mut mode = Mode::Named;
+        let expected_modes =
+            [Mode::Parametric, Mode::Sampled, Mode::CompactSrgb, Mode::CompactP3, Mode::CompactAdobe, Mode::Named];
+        for next in expected_modes {
+            mode = mode.next();
+            assert_eq!(mode, next);
+        }
+        // Exact serialized tags + 120-digit Bradford oracle from the sibling
+        // generate_real_icc_references.py; these are not named-space constants.
+        for (mode, green, gray, decoded) in [
+            (
+                Mode::CompactSrgb,
+                [0.3575719712079898, 0.7151991803970688, 0.11920574451602804],
+                [0.025863563264526754, 0.027211743888804932, 0.029635160593795767],
+                0.027211743888804932,
+            ),
+            (
+                Mode::CompactP3,
+                [0.265666201411577, 0.6917408005147115, 0.04512168518649937],
+                [0.025863563264526754, 0.027211743888804932, 0.029635160593795767],
+                0.027211743888804932,
+            ),
+            (
+                Mode::CompactAdobe,
+                [0.18556077203321786, 0.6273601958560202, 0.07067922932565311],
+                [0.021854144243416727, 0.022993327329977945, 0.025041061344471423],
+                0.022993327329977945,
+            ),
+        ] {
+            let color = mode.color(ImageColor::SRGB).unwrap();
+            for (rgba, expected) in [([0., 1., 0., 0.5], green), ([0.18, 0.18, 0.18, 0.5], gray)] {
+                let sample = inspect(&color, rgba).unwrap();
+                let energy = if rgba[0] == 0. { 1. } else { 3. * decoded };
+                for c in 0..3 {
+                    assert!((sample.xyz[c] - expected[c]).abs() <= 128. * f64::EPSILON * energy);
+                }
+            }
+            let gray = inspect(&color, [0.18, 0.18, 0.18, 0.5]).unwrap();
+            for value in gray.decoded {
+                assert!((value - decoded).abs() <= 16. * f64::EPSILON * decoded);
+            }
+            assert_eq!(inspect(&color, [0.18, 0.18, 0.18, 0.]).unwrap().xyz, [0.; 3]);
+        }
+    }
+
     #[test]
     fn near_black_uses_exact_serialized_curves_and_canonical_alpha() {
         let x = f64::from(0.0001_f32);
