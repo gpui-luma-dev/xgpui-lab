@@ -6,7 +6,7 @@ use super::super::color::interpolate_rgb;
 pub enum GradientType {
     Linear,
     Radial,
-    Angular,
+    Conic,
 }
 
 impl GradientType {
@@ -14,7 +14,7 @@ impl GradientType {
         match self {
             Self::Linear => "linear",
             Self::Radial => "radial",
-            Self::Angular => "angular",
+            Self::Conic => "conic",
         }
     }
 }
@@ -24,6 +24,12 @@ pub enum PreviewRenderer {
     Quads,
     RenderImageSync,
     RenderImageAsync,
+    ShaderPaint,
+    ShaderBrush,
+}
+
+impl PreviewRenderer {
+    pub fn is_shader(self) -> bool { matches!(self, Self::ShaderPaint | Self::ShaderBrush) }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

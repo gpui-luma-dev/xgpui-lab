@@ -78,7 +78,16 @@ impl GradientBuilder {
 }
 
 impl Render for GradientBuilder {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let now = Instant::now();
+        if self.angle_animation && self.selected_tab == BuilderTab::Gradients && self.gradient_type != GradientType::Radial {
+            let elapsed = now.duration_since(self.angle_last_frame).as_secs_f32().min(0.1);
+            self.rotation_deg = (self.rotation_deg + elapsed * self.angle_speed).rem_euclid(360.0);
+            self.rotation_slider.update(cx, |slider, cx| slider.set_value(self.rotation_deg, cx));
+            let _ = self.ensure_preview_image_cache(self.preview_size, cx);
+            window.request_animation_frame();
+        }
+        self.angle_last_frame = now;
         let chrome = self.look.chrome();
         let rotation_deg = self.rotation_deg;
         let stops = self.preview_stops(cx);
@@ -90,7 +99,14 @@ impl Render for GradientBuilder {
         let preview_corner_radii = preview_panel_corner_radii();
         let preview_surface_radii =
             Corners { top_left: px(0.0), top_right: px(0.0), bottom_left: px(0.0), bottom_right: px(0.0) };
-        let preview_uses_render_image = self.uses_render_preview(cx);
+        let p3_active = self.selected_tab == BuilderTab::Gradients && self.preview_p3 && super::p3::available(window);
+        if p3_active { self.active_preview_strategy = "Display P3 shader"; }
+        let p3_preview = p3_active.then(|| self.p3_cache.element(self.gradient_type, &stops, rotation_deg, self.image_adjustments.is_neutral()));
+        let preview_uses_render_image = !p3_active && self.uses_render_preview(cx);
+        let shader_preview = if !p3_active && self.selected_tab == BuilderTab::Gradients && self.preview_renderer.is_shader() {
+            Some(self.linear_shader_cache.get(self.preview_renderer, self.gradient_type, &stops, rotation_deg,
+                self.preview_size, self.image_adjustments.is_neutral()))
+        } else { None };
         let allow_native_two_stop = self.gradient_type == GradientType::Linear
             && stops.len() == 2
             && self.effective_preview_renderer() == PreviewRenderer::Quads;
@@ -99,6 +115,9 @@ impl Render for GradientBuilder {
         } else {
             None
         };
+        self.preview_metrics.sample(now, now.elapsed(), self.angle_animation && self.selected_tab == BuilderTab::Gradients && self.gradient_type != GradientType::Radial);
+        let performance_overlay = format!("CPU prep  {:.2} ms\nUI FPS  {}", self.preview_metrics.cpu_ms,
+            self.preview_metrics.fps.map(|fps| format!("{fps:.0}")).unwrap_or_else(|| "—".into()));
         let controls = self.render_inspector("color-viz-gradient-controls", card_bg);
         let picker_bounds = match self.selected_tab {
             BuilderTab::Gradients => {
@@ -163,7 +182,11 @@ impl Render for GradientBuilder {
                     .when_some(preview_image, |this, image| {
                         this.child(img(ImageSource::Render(image)).size_full().absolute().top_0().left_0())
                     })
-                    .when(!preview_uses_render_image, |this| {
+                    .when_some(p3_preview, |this, preview| this.child(preview))
+                    .when_some(shader_preview, |this, material| {
+                        this.child(super::linear_shader::element(material))
+                    })
+                    .when(!p3_active && !preview_uses_render_image && !self.preview_renderer.is_shader(), |this| {
                         this.child({
                             let stops = stops.clone();
                             let gradient_type = self.gradient_type;
@@ -183,7 +206,14 @@ impl Render for GradientBuilder {
                             )
                             .size_full()
                         })
-                    });
+                    })
+                    .child(
+                        div().absolute().top(px(8.)).left(px(8.))
+                            .px_2().py_1().rounded(px(4.))
+                            .bg(gpui::hsla(0., 0., 0., 0.65))
+                            .text_color(gpui::white()).text_size(px(11.))
+                            .child(performance_overlay),
+                    );
                 let preview = div()
                     .flex_1()
                     .min_w(px(0.0))

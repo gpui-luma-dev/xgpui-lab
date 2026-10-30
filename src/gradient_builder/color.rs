@@ -88,7 +88,7 @@ pub fn format_css_radial_gradient(stops: &[(f32, Hsla)]) -> String {
     format!("radial-gradient(circle, {stop_list})")
 }
 
-pub fn format_css_angular_gradient(stops: &[(f32, Hsla)], rotation_deg: f32) -> String {
+pub fn format_css_conic_gradient(stops: &[(f32, Hsla)], rotation_deg: f32) -> String {
     if stops.is_empty() {
         return format!("conic-gradient(from {}deg, transparent 0%, transparent 100%)", rotation_deg.round() as i32);
     }
@@ -106,7 +106,7 @@ pub fn format_css_gradient(gradient_type: GradientType, stops: &[(f32, Hsla)], r
     match gradient_type {
         GradientType::Linear => format_css_linear_gradient(stops, rotation_deg),
         GradientType::Radial => format_css_radial_gradient(stops),
-        GradientType::Angular => format_css_angular_gradient(stops, rotation_deg),
+        GradientType::Conic => format_css_conic_gradient(stops, rotation_deg),
     }
 }
 

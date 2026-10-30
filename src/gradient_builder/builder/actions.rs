@@ -12,6 +12,25 @@ use super::mesh::{
 };
 
 impl GradientBuilder {
+    pub(super) fn adjustments_supported(&self) -> bool {
+        self.selected_tab != BuilderTab::Gradients || (!self.preview_p3 && !self.preview_renderer.is_shader())
+    }
+
+    pub(super) fn sync_adjustment_support(&mut self, cx: &mut Context<Self>) {
+        let enabled = self.adjustments_supported();
+        if !enabled {
+            self.image_adjustments = super::super::paint::ImageAdjustments::default();
+            self.preview_image_cache = None;
+            self.render_task = None;
+        }
+        for slider in [&self.saturation_slider, &self.vibrance_slider] {
+            slider.update(cx, |slider, cx| {
+                if !enabled { slider.set_value(0., cx); }
+                slider.set_enabled(enabled, cx);
+            });
+        }
+    }
+
     pub(super) fn handle_stops_event(&mut self, event: &SliderEvent, cx: &mut Context<Self>) {
         match event {
             SliderEvent::ThumbAdded { thumb_id, .. } => {
@@ -99,6 +118,7 @@ impl GradientBuilder {
             }
             self.preview_image_cache = None;
             self.selected_tab = next;
+            self.sync_adjustment_support(cx);
             self.sync_visibility_button(cx);
             if next == BuilderTab::Freeform {
                 self.sync_freeform_buttons(cx);
@@ -118,7 +138,7 @@ impl GradientBuilder {
         };
         let next = match item_id.as_ref() {
             "radial" => GradientType::Radial,
-            "angular" => GradientType::Angular,
+            "conic" => GradientType::Conic,
             _ => GradientType::Linear,
         };
         if self.gradient_type != next {
@@ -135,10 +155,14 @@ impl GradientBuilder {
         let next = match item_id.as_ref() {
             "render" => PreviewRenderer::RenderImageSync,
             "render_async" => PreviewRenderer::RenderImageAsync,
+            "shader_paint" => PreviewRenderer::ShaderPaint,
+            "shader_brush" => PreviewRenderer::ShaderBrush,
             _ => PreviewRenderer::Quads,
         };
         if self.preview_renderer != next {
             self.preview_renderer = next;
+            self.sync_adjustment_support(cx);
+            self.render_task = None;
             let _ = self.ensure_preview_image_cache(self.preview_size, cx);
             cx.notify();
         }
@@ -459,6 +483,9 @@ impl GradientBuilder {
     }
 
     pub(super) fn effective_preview_renderer(&self) -> PreviewRenderer {
+        if self.selected_tab == BuilderTab::Gradients && self.preview_renderer.is_shader() {
+            return self.preview_renderer;
+        }
         if !self.image_adjustments.is_neutral() {
             return PreviewRenderer::RenderImageSync;
         }
@@ -470,6 +497,7 @@ impl GradientBuilder {
     }
 
     pub(super) fn uses_render_preview(&self, cx: &Context<Self>) -> bool {
+        if self.selected_tab == BuilderTab::Gradients && self.preview_renderer.is_shader() { return false; }
         if self.selected_tab != BuilderTab::Gradients || !self.image_adjustments.is_neutral() {
             return true;
         }
@@ -487,6 +515,8 @@ impl GradientBuilder {
             return;
         }
         self.active_preview_strategy = match (self.gradient_type, stop_count, self.effective_preview_renderer()) {
+            (_, _, PreviewRenderer::ShaderPaint) => "shader paint",
+            (_, _, PreviewRenderer::ShaderBrush) => "shader brush",
             (_, 0, _) => "empty",
             (_, 1, _) => "solid",
             (GradientType::Linear, _, PreviewRenderer::Quads) => "quads",

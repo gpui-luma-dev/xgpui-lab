@@ -205,12 +205,28 @@ impl GradientBuilder {
                             .child(div().flex_1().min_w_0().child(form_field!("Type", chrome; type_selector)))
                             .child(div().flex_1().min_w_0().child(form_field!("Renderer", chrome; renderer_selector))),
                     )
+                    .child(self.p3_switch.clone())
+                    .when(self.preview_p3, |this| {
+                        this.child(div().text_size(px(11.0)).child(if super::p3::available(window) {
+                            "Display P3 · native shader"
+                        } else {
+                            "Display P3 unavailable · sRGB fallback"
+                        }))
+                    })
                     .child(form_field!("Aspect", chrome; self.mesh_aspect_ratio_selector.clone()))
                     .when(self.gradient_type != GradientType::Radial, |this| {
                         this.child(compact_slider_row(
                             "Angle",
                             rotation_slider,
                             format!("{rotation_deg:.0}°"),
+                            info_label_style,
+                            chrome,
+                        ))
+                        .child(self.animate_angle_button.clone())
+                        .child(compact_slider_row(
+                            "Speed",
+                            self.angle_speed_slider.clone(),
+                            format!("{:.0}°/s", self.angle_speed),
                             info_label_style,
                             chrome,
                         ))
@@ -418,6 +434,8 @@ impl GradientBuilder {
                             PreviewRenderer::Quads => "quads",
                             PreviewRenderer::RenderImageSync => "render (sync)",
                             PreviewRenderer::RenderImageAsync => "render (async)",
+                            PreviewRenderer::ShaderPaint => "shader paint",
+                            PreviewRenderer::ShaderBrush => "shader brush",
                         },
                         info_label_style,
                         info_value_style,

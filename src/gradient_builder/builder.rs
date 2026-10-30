@@ -17,6 +17,9 @@ use gpui_luma_look_radix as radix;
 use lucide_svg_static::Icon as LucideIcon;
 
 mod actions;
+mod linear_shader;
+mod p3;
+mod metrics;
 mod mesh;
 mod view;
 mod freeform;
@@ -64,8 +67,18 @@ pub struct GradientBuilder {
     mesh_grid_selector: Entity<Selector>,
     mesh_aspect_ratio_selector: Entity<Selector>,
     rotation_deg: f32,
+    preview_metrics: metrics::Metrics,
+    angle_animation: bool,
+    angle_speed: f32,
+    angle_speed_slider: Entity<SliderControl>,
+    angle_last_frame: Instant,
+    animate_angle_button: Entity<Button>,
     gradient_type: GradientType,
     preview_renderer: PreviewRenderer,
+    linear_shader_cache: linear_shader::Cache,
+    preview_p3: bool,
+    p3_switch: gpui_luma::controls::switch::Switch,
+    p3_cache: p3::Cache,
     mesh_grid_preset: MeshGridPreset,
     mesh_aspect_ratio_preset: MeshAspectRatioPreset,
     mesh_points: Vec<MeshPoint>,
@@ -223,13 +236,11 @@ impl GradientBuilder {
             .spawn(cx);
         let type_selector = radix::Selector::new("color-viz-gradient-type")
             .look(look.as_ref())
-            .size(radix::ButtonSize::One)
             .items(type_items())
             .selected_id("linear")
             .spawn(cx);
         let renderer_selector = radix::Selector::new("color-viz-gradient-renderer")
             .look(look.as_ref())
-            .size(radix::ButtonSize::One)
             .items(renderer_items())
             .selected_id("quads")
             .spawn(cx);
@@ -241,7 +252,6 @@ impl GradientBuilder {
             .spawn(cx);
         let mesh_aspect_ratio_selector = radix::Selector::new("color-viz-mesh-aspect")
             .look(look.as_ref())
-            .size(radix::ButtonSize::One)
             .items(mesh_aspect_ratio_items())
             .selected_id("fill")
             .spawn(cx);
@@ -255,6 +265,27 @@ impl GradientBuilder {
             .checked(true)
             .spawn(cx)
             .tooltip(Tooltip::new("Hide/show points (right-click canvas)"), cx);
+        let angle_speed_slider = radix::Slider::new("gradient-angle-speed")
+            .look(&look)
+            .range(1.0..180.0)
+            .step(1.0)
+            .value(30.0)
+            .spawn(cx);
+        let animate_angle_button = radix::Button::new("gradient-animate-angle")
+            .look(&look)
+            .outline()
+            .label("Animate")
+            .spawn(cx);
+        let p3_switch = radix::Switch::new("gradient-preview-color-space")
+            .look(&look)
+            .label("Display P3")
+            .checked(false)
+            .on_value_changed(cx, |this: &mut Self, on, cx| {
+                this.preview_p3 = on;
+                this.sync_adjustment_support(cx);
+                cx.notify();
+            })
+            .spawn(cx);
         let copy_css_button = crate::theme::icon_button("color-viz-copy-css", LucideIcon::Copy)
             .look(&look)
             .content_only()
@@ -294,8 +325,18 @@ impl GradientBuilder {
             mesh_grid_selector: mesh_grid_selector.clone(),
             mesh_aspect_ratio_selector: mesh_aspect_ratio_selector.clone(),
             rotation_deg: 90.0,
+            preview_metrics: metrics::Metrics::default(),
+            angle_animation: false,
+            angle_speed: 30.0,
+            angle_speed_slider: angle_speed_slider.clone(),
+            angle_last_frame: Instant::now(),
+            animate_angle_button: animate_angle_button.clone(),
             gradient_type: GradientType::Linear,
             preview_renderer: PreviewRenderer::Quads,
+            linear_shader_cache: linear_shader::Cache::default(),
+            preview_p3: false,
+            p3_switch,
+            p3_cache: p3::Cache::default(),
             mesh_grid_preset,
             mesh_aspect_ratio_preset,
             mesh_points: default_mesh_points(mesh_grid_preset),
@@ -405,6 +446,7 @@ impl GradientBuilder {
         for (slider, saturation) in [(saturation_slider, true), (vibrance_slider, false)] {
             builder._subscriptions.push(cx.subscribe(&slider, move |this, _, event: &SliderEvent, cx| {
                 if let SliderEvent::Change { value, .. } | SliderEvent::Release { value, .. } = event {
+                    if !this.adjustments_supported() { return; }
                     if saturation {
                         this.image_adjustments.saturation = *value;
                     } else {
@@ -420,6 +462,20 @@ impl GradientBuilder {
         builder._subscriptions.push(cx.subscribe(&export_button, |this, _, event: &ButtonEvent, cx| {
             if matches!(event, ButtonEvent::Click) {
                 this.export_png(cx);
+            }
+        }));
+        builder._subscriptions.push(cx.subscribe(&angle_speed_slider, |this, _, event: &SliderEvent, cx| {
+            if let SliderEvent::Change { value, .. } | SliderEvent::Release { value, .. } = event {
+                this.angle_speed = *value;
+                cx.notify();
+            }
+        }));
+        builder._subscriptions.push(cx.subscribe(&animate_angle_button, |this, button, event: &ButtonEvent, cx| {
+            if matches!(event, ButtonEvent::Click) {
+                this.angle_animation = !this.angle_animation;
+                this.angle_last_frame = Instant::now();
+                button.update(cx, |button, cx| button.set_label(if this.angle_animation { "Stop" } else { "Animate" }, cx));
+                cx.notify();
             }
         }));
         builder.init_section_accordions(cx);

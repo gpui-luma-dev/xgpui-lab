@@ -172,7 +172,7 @@ pub(super) fn type_items() -> Vec<SelectorItem> {
     vec![
         SelectorItem::new("linear").label("Linear"),
         SelectorItem::new("radial").label("Radial"),
-        SelectorItem::new("angular").label("Angular"),
+        SelectorItem::new("conic").label("Conic"),
     ]
 }
 
@@ -181,6 +181,8 @@ pub(super) fn renderer_items() -> Vec<SelectorItem> {
         SelectorItem::new("quads").label("Quads"),
         SelectorItem::new("render").label("Render (Sync)"),
         SelectorItem::new("render_async").label("Render (Async)"),
+        SelectorItem::new("shader_paint").label("Shader paint"),
+        SelectorItem::new("shader_brush").label("Shader brush"),
     ]
 }
 

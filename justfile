@@ -6,6 +6,10 @@ default:
 run:
     cargo run --locked --release
 
+# Run XGPUI Lab in debug mode.
+run-dbg:
+    cargo run --locked
+
 # Build the release executable.
 build:
     cargo build --locked --release
