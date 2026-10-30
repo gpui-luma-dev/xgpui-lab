@@ -1,5 +1,6 @@
 [package]
 name = "xgpui-lab"
+default-run = "xgpui-lab"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
@@ -14,6 +15,7 @@ test-support = ["gpui-luma/test-support"]
 portable-app = []
 
 [dependencies]
+log = "0.4"
 gpui-wgpu = { package = "xgpui-wgpu", path = "../xgpui/gpui/crates/gpui-wgpu", features = ["test-support"], optional = true }
 libc = "0.2"
 bytemuck = { version = "1", features = ["derive"] }
