@@ -107,3 +107,25 @@ exercise the new library adapter; they do not use its discarded transform engine
 Validation: all 10 standalone tests, strict Clippy and a dev build pass. The real macOS Metal window was checked for named → parametric → sampled metadata switching with identical Mid gray pixels, changed decoded values/source marker, returning to named metadata, scrolling and retained patch rendering. WideGamutSdr was active with no fallback. This is consumer/UI evidence, not a monitor calibration or gamut measurement. Windows/Linux runtime remains unverified.
 
 The main view uses a 680 logical-pixel-tall chromaticity chart (twice the original height), with native-wide and clipped-sRGB samples stacked to its right. Decode tracking follows below the chart; scroll vertically to inspect it.
+
+
+GPU validation: click **Check GPU (Metal FP16)** beside the samples while the
+full native sample is visible. Wide-gamut mode and a completed upload are
+required. This synchronously re-renders the current painted scene and checks
+nine center pixels from the actual extended linear-P3 FP16 target. The result
+shows measured RGBA, independent expected values and per-channel error budgets.
+Control changes invalidate the prior result; each PASS is a snapshot.
+
+The reference starts at the actual packed source FP16 bytes, independently
+converts Rec.2020 to P3, and accounts for source-over white and the two optional
+opacity effects. It isolates GPU conversion/composition from source/ICC
+interpretation. Budgets scale with source energy and FP16 rounding stages,
+include subnormal absolute error and f32 arithmetic, and require alpha exactly
+one over the opaque white backdrop. A constant center checks blur preservation,
+not blur edges or measured display output. Other backends return unsupported.
+
+Validation: 12 standalone tests and strict Clippy pass. Native macOS UI checks
+passed for Adobe RGB green, half alpha, both direct and nested opacity/blur.
+The library additionally passes 13 native wide-color tests and 7 wide-capture
+tests, including 96 FP16 color/alpha/capture/blur combinations. Source/ICC
+precision remains covered by the existing independent ingestion references.
