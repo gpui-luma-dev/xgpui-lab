@@ -3,6 +3,8 @@
 mod fill;
 #[path = "chromaticity-lab/metadata.rs"]
 mod metadata;
+#[path = "chromaticity-lab/gpu.rs"]
+mod gpu;
 use gpui::{prelude::*, *};
 use std::sync::Arc;
 use xgpui_color::{GamutMapping, LinearRgb, RgbSpace, XyzD65};
@@ -98,6 +100,8 @@ struct Lab {
     fill_job: Option<ImageJob>,
     fill_image: Option<MediaImage>,
     fill_status: String,
+    gpu_bounds: Arc<std::sync::Mutex<Option<Bounds<ScaledPixels>>>>,
+    gpu_report: String,
 }
 impl Lab {
     fn new() -> Self {
@@ -125,6 +129,8 @@ impl Lab {
             fill_job: None,
             fill_image: None,
             fill_status: String::new(),
+            gpu_bounds: Arc::new(std::sync::Mutex::new(None)),
+            gpu_report: "GPU readback: not checked. Show the full native sample, then click Check GPU.".into(),
         };
         s.reload();
         s.reload_fill();
@@ -220,6 +226,9 @@ impl Lab {
             .cursor_pointer()
             .child(label)
             .on_click(cx.listener(move |s, _, window, cx| {
+                if action != 17 {
+                    s.gpu_report = "GPU readback: controls changed; check again.".into();
+                }
                 match action {
                     0 => {
                         if s.metadata == metadata::Mode::Named {
@@ -283,6 +292,26 @@ impl Lab {
                     14 => s.fill_output = (s.fill_output + 1) % SPACES.len(),
                     15 => s.hatch = !s.hatch,
                     16 => s.metadata = s.metadata.next(),
+                    17 => {
+                        let result = (|| -> anyhow::Result<String> {
+                            anyhow::ensure!(s.wide, "Enable the wide-gamut window first (Metal only)");
+                            anyhow::ensure!(
+                                s.images.first().is_some_and(|i| i.upload_status() == xgpui_media::UploadStatus::Ready),
+                                "Wait for native sample upload"
+                            );
+                            let inspection = s.inspection.as_ref().ok_or_else(|| anyhow::anyhow!("No valid pixel"))?;
+                            let bounds = s
+                                .gpu_bounds
+                                .lock()
+                                .unwrap()
+                                .ok_or_else(|| anyhow::anyhow!("Native sample has not painted"))?;
+                            let frame = window.render_to_linear_p3()?;
+                            gpu::verify(&frame, bounds, inspection.stored, s.rec, s.effects)
+                        })();
+                        s.gpu_report = result.unwrap_or_else(|e| format!("GPU check: {e:#}"));
+                        cx.notify();
+                        return;
+                    }
                     _ => {}
                 }
                 if action < 6 || action == 16 || (9..=11).contains(&action) {
@@ -399,12 +428,16 @@ impl Lab {
     }
     fn patch(&self, image: Option<MediaImage>, native: bool, scale: f32) -> AnyElement {
         let wide = self.wide && native;
+        let gpu_bounds = self.gpu_bounds.clone();
         // Reserve the core capture region's worst-case four-level halo:
         // 16 logical + 8 physical pixels per side per nesting level.
         let panel_width = ((1000. - 8. * (16. * scale + 8.)) / scale).clamp(24., 320.);
         let content = canvas(
             |_, _, _| (),
             move |bounds, _, window, _| {
+                if native {
+                    *gpu_bounds.lock().unwrap() = Some(bounds.scale(window.scale_factor()));
+                }
                 if let Some(image) = &image {
                     wake_for_upload(image, bounds, window);
                     if wide {
@@ -542,9 +575,9 @@ impl Render for Lab {
             .child(div().text_sm().child("Click controls to cycle. RGB steps: 0, 0.0001, 0.001, 0.18, 0.5, 1. Source/Transfer return ICC patches to named metadata. Synthetic ICC fixtures use Adobe RGB primaries, f64 curves and PCS-to-D65 adaptation. Probe presets are intentionally dark; choose Mid gray for visible differences."))
             .child(div().flex().gap_2().children((0..3).map(|c|self.button(format!("{}: {}",["R","G","B"][c],self.rgb[c]),9+c,cx))))
             .child(div().text_sm().child(format!("{} • active: {:?} • display reports wide gamut: {:?} • fallback: {:?}",if cfg!(target_os="macos") {"Metal"} else if cfg!(target_os="windows") {"D3D11"} else {"Native backend"},window.color_status().effective(),window.color_status().display_wide_gamut(),window.color_status().fallback())))
-            .child(div().flex().items_start().flex_shrink_0().gap_5().child(div().flex_1().min_w_0().child(self.diagram()).child(div().flex().gap_3().children(NAMES.into_iter().enumerate().map(|(i,n)|div().text_color(rgb(COLORS[i])).child(n)))).child("White cross: D65 • gold cross: selected source. Axes start at zero; xy max 0.8 × 0.9, u′v′ max 0.65 × 0.65. CIE 1931 2° spectral locus + purple boundary (CIE 2019, CC BY-SA 4.0); no monitor measurement." )).child(div().w(px(360.)).flex_shrink_0().flex().flex_col().gap_4().child(self.patch(self.images.first().cloned(),true,window.scale_factor())).child(self.patch(self.images.get(1).cloned(),false,window.scale_factor()))))
+            .child(div().flex().items_start().flex_shrink_0().gap_5().child(div().flex_1().min_w_0().child(self.diagram()).child(div().flex().gap_3().children(NAMES.into_iter().enumerate().map(|(i,n)|div().text_color(rgb(COLORS[i])).child(n)))).child("White cross: D65 • gold cross: selected source. Axes start at zero; xy max 0.8 × 0.9, u′v′ max 0.65 × 0.65. CIE 1931 2° spectral locus + purple boundary (CIE 2019, CC BY-SA 4.0); no monitor measurement." )).child(div().w(px(360.)).flex_shrink_0().flex().flex_col().gap_4().child(self.patch(self.images.first().cloned(),true,window.scale_factor())).child(self.patch(self.images.get(1).cloned(),false,window.scale_factor())).child(self.button("Check GPU (Metal FP16)".into(),17,cx)).child(div().text_sm().child(self.gpu_report.clone()))))
             .child(div().flex_shrink_0().flex().flex_col().gap_2().child(div().text_lg().child("Decode tracking")).child(div().text_sm().child(info)))
-            .child(self.error.clone().unwrap_or_else(||"P3 red lies slightly outside Rec.2020. Keep P3 storage to retain all of P3. Plotted gamuts do not imply monitor coverage. FP16 values are inspected from actual CPU-packed bytes; composition values are predicted, not a GPU readback.".into()))
+            .child(self.error.clone().unwrap_or_else(||"P3 red lies slightly outside Rec.2020. Keep P3 storage to retain all of P3. Plotted gamuts do not imply monitor coverage. FP16 values are inspected from actual CPU-packed bytes; composition values above are predictions; Check GPU measures native sample center pixels.".into()))
     }
 }
 // Poll only visible uploads. An offscreen or disabled fill may remain Idle;
