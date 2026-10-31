@@ -78,7 +78,7 @@ impl GradientBuilder {
                     };
                     let trigger = AccordionTrigger::custom(move |_, _| {
                         let chrome = look.chrome();
-                        let label_color = gpui::Hsla { a: chrome.muted_text.a * 0.75, ..chrome.muted_text };
+                        let label_color = chrome.muted_text;
                         div()
                             .debug_selector({
                                 let selector = selector.clone();
@@ -317,6 +317,7 @@ impl GradientBuilder {
                                 self.look.typography_scale(TextSize::Sm),
                                 self.look.typography_scale(TextSize::Sm),
                                 chrome,
+                                self.look.interaction_colors(),
                                 cx.entity(),
                             )
                             .into_any_element(),
@@ -328,6 +329,7 @@ impl GradientBuilder {
                     self.selected_stop.map(|id| id.as_u64()),
                     "color-viz-stop-list",
                     chrome,
+                    self.look.interaction_colors(),
                     window,
                     cx,
                     GradientBuilder::handle_stop_list_input,
@@ -374,7 +376,7 @@ impl GradientBuilder {
                                 point,
                                 selected,
                                 info_label_style,
-                                chrome,
+                                &self.look,
                                 cx.entity(),
                             ))
                             .when(self.selected_tab == BuilderTab::Freeform && selected, |row| {
@@ -399,6 +401,7 @@ impl GradientBuilder {
                     self.selected_mesh_point.map(|index| self.mesh_point_ids[index]),
                     "color-viz-point-list",
                     chrome,
+                    self.look.interaction_colors(),
                     window,
                     cx,
                     GradientBuilder::handle_point_list_input,

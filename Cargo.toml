@@ -90,3 +90,8 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = ["s
 objc2-core-foundation = "0.3.2"
 objc2-core-video = "0.3.2"
 gpui-apple = { package = "xgpui-apple", version = "=2.0.1", features = ["test-support"] }
+
+# Temporary fix for the published backend's typed-null blur crash.
+# Remove after a registry release includes the CALayer background fix.
+[patch.crates-io]
+xgpui-macos = { path = "patches/xgpui-macos" }

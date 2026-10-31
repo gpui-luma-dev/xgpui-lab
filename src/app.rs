@@ -72,6 +72,7 @@ const SECTIONS: &[Section] = &[
             ("Interpolation", "Interpolation"),
             ("Gamut Mapping", "Gamut Mapping"),
             ("CPU Gradients", "CPU Gradients"),
+            ("Italy Photo Comparison", "Italy Photo Comparison"),
         ],
     ),
     (
@@ -80,6 +81,7 @@ const SECTIONS: &[Section] = &[
         &[
             ("Wide Color Fills", "Wide Color Fills"),
             ("Wide Gradients", "Wide Gradients"),
+            ("Chromaticity & Gamut", "Chromaticity & Gamut"),
             ("Gamut Mapping", "Gamut Mapping"),
             ("Presentation", "Presentation"),
             ("Benchmarks", "Benchmarks"),
@@ -176,8 +178,7 @@ impl XgpuiLabApp {
         let p3_error = window.set_color_mode(gpui::WindowColorMode::WideGamutSdr).err().map(|error| error.to_string());
         let focus_scope = cx.focus_handle();
         let look = crate::theme::default_look();
-        let nav_look = Arc::new(look.fork());
-        nav_look.set_palettes(gpui_luma_look_radix::Accent::Gray, gpui_luma_look_radix::Gray::Gray);
+        let nav_look = look.clone();
         sync_color_control_theme(&look);
         let gradient_builder = cx.new(|cx| GradientBuilder::new(look.clone(), cx));
         let extensions = SECTIONS
@@ -226,11 +227,12 @@ impl XgpuiLabApp {
                         gpui_luma_look_radix::Paint::gray(),
                     ),
                 )
-                .with_modifier(move |row, _| {
+                .with_modifier(move |row, model| {
+                    let colors = entry_look.interaction_colors();
                     row.w_full()
                         .justify_start()
                         .text_align(gpui::TextAlign::Left)
-                        .when(paint_selected.load(Ordering::Relaxed), |row| row.bg(entry_look.chrome().border))
+                        .when_some(colors.background(paint_selected.load(Ordering::Relaxed), model.state), |row, color| row.bg(color))
                 });
                 button.update(cx, |button, cx| button.set_template(Arc::new(template), cx));
                 rows.push(button.clone());
@@ -322,7 +324,6 @@ impl XgpuiLabApp {
                 ThemeMode::Dark => ThemeMode::Light,
             };
             this.look.set_mode(mode);
-            this.nav_look.set_mode(mode);
             sync_color_control_theme(&this.look);
             let icon = if mode == ThemeMode::Dark {
                 lucide_svg_static::Icon::Sun
@@ -538,7 +539,9 @@ mod tests {
             (Workspace::Compositions, "harmonies"),
             (Workspace::Gradients, "mesh"),
             (Workspace::Color, "Gamut Mapping"),
+            (Workspace::Color, "Italy Photo Comparison"),
             (Workspace::Gamut, "Gamut Mapping"),
+            (Workspace::Gamut, "Chromaticity & Gamut"),
             (Workspace::Compositions, "picker"),
             (Workspace::Gradients, "freeform"),
         ] {

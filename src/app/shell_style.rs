@@ -1,6 +1,5 @@
 // Shell geometry from gpui-luma/apps/shells/shell-2026.
-use gpui::{Hsla, Pixels, px, rgb};
-use gpui_luma::theme::ThemeMode;
+use gpui::{Hsla, Pixels, px};
 use gpui_luma_look_radix::Look;
 use crate::theme::ColorVizLookExt;
 
@@ -8,8 +7,6 @@ pub(super) const RAIL_WIDTH: Pixels = px(52.0);
 pub(crate) const SHELL_TITLEBAR_HEIGHT: Pixels = px(40.0);
 pub(super) const CANVAS_BORDER: Pixels = px(1.0);
 pub(super) const CANVAS_RADIUS: Pixels = px(10.0);
-const DARK_SHELL_BACKGROUND: u32 = 0x272727;
-const DARK_CANVAS_BORDER_COLOR: u32 = 0x363636;
 pub(super) const INITIAL_SIDEBAR_WIDTH: Pixels = px(260.0);
 pub(super) const MIN_SIDEBAR_WIDTH: Pixels = px(200.0);
 pub(super) const MAX_SIDEBAR_WIDTH: Pixels = px(480.0);
@@ -18,15 +15,9 @@ pub(super) const CANVAS_TOP_INSET: Pixels = px(2.0);
 pub(super) const CANVAS_EDGE_INSET: Pixels = px(3.0);
 
 pub(super) fn shell_background(look: &Look) -> Hsla {
-    match look.mode() {
-        ThemeMode::Dark => rgb(DARK_SHELL_BACKGROUND).into(),
-        ThemeMode::Light => look.chrome().app_background,
-    }
+    look.chrome().app_background
 }
 
 pub(super) fn canvas_border_color(look: &Look) -> Hsla {
-    match look.mode() {
-        ThemeMode::Dark => rgb(DARK_CANVAS_BORDER_COLOR).into(),
-        ThemeMode::Light => look.chrome().border,
-    }
+    look.chrome().border
 }

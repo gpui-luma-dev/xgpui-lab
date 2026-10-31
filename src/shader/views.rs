@@ -389,7 +389,7 @@ impl ShaderPage {
                     .w_full()
                     .h(px(380.))
                     .overflow_hidden()
-                    .bg(rgb(0x121c32))
+                    .bg(self.look.chrome().panel_background)
                     .opacity(if self.half_opacity { 0.5 } else { 1. })
                     .child(
                         canvas(

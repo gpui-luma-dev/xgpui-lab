@@ -309,6 +309,7 @@ impl SvgPage {
                         .into_iter()
                         .map(|(label, effect)| {
                             div().w(px(300.)).flex().flex_col().gap_2().child(label).child(paths::panel(
+                                &self.look,
                                 path,
                                 effect,
                                 self.values[5],

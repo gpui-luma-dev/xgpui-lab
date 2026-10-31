@@ -6,8 +6,10 @@ use std::time::Instant;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
 use xgpui_media::pipeline::*;
+use crate::theme::ColorVizLookExt;
 
 pub struct TiledDemo {
+    look: Arc<gpui_luma_look_radix::Look>,
     buttons: Vec<Entity<gpui_luma::controls::button::Button>>,
     blur_choice: crate::lab_controls::Choice,
     render_scale: f64,
@@ -120,6 +122,7 @@ impl TiledDemo {
         })
         .collect();
         Self {
+            look,
             buttons,
             blur_choice,
             render_scale: 1.,
@@ -224,7 +227,7 @@ impl Render for TiledDemo {
             .w(px(viewport[0] as f32))
             .h(px(viewport[1] as f32))
             .flex_shrink_0()
-            .bg(rgb(0x253342))
+            .bg(self.look.chrome().panel_background)
             .overflow_hidden()
             .cursor_crosshair()
             .on_scroll_wheel(cx.listener(move |s, event: &ScrollWheelEvent, _, cx| {
@@ -278,7 +281,7 @@ impl Render for TiledDemo {
             );
         let mib = |bytes: u64| bytes as f64 / (1024. * 1024.);
         div().id("tiled-demo").size_full().overflow_y_scroll().flex().flex_col().gap_3().p_4()
-            .bg(rgb(0x0f172a)).text_color(rgb(0xe2e8f0)).font_family("IBM Plex Sans")
+            .bg(self.look.chrome().content_background).text_color(self.look.chrome().body_text).font_family("IBM Plex Sans")
             .child(div().text_xl().child("Progressive tiled canvas · 72 megapixels"))
             .child("12,000 × 6,000 generated source · preview stays visible as selected tiles refine · drag to pan, wheel to zoom")
             .child(div().flex().flex_wrap().gap_2().children(self.buttons.clone()).child(self.blur_choice.clone()))

@@ -1,5 +1,6 @@
 //! Path fixtures and comparison panels adapted from media-lab/src/paths.rs.
 use anyhow::Result;
+use crate::theme::ColorVizLookExt;
 use gpui::{prelude::*, *};
 use xgpui_svg::path_effects::{Contour, MeasuredPath, PathEffect};
 
@@ -49,7 +50,7 @@ fn place(mut path: Path<Pixels>, offset: Point<Pixels>, scale: f32) -> Path<Pixe
     path.bounds.size = path.bounds.size.map(|v| v * scale);
     path
 }
-pub(super) fn panel(path: &MeasuredPath, effect: PathEffect, width: f32, color: u32, height: f32) -> Div {
+pub(super) fn panel(look: &gpui_luma_look_radix::Look, path: &MeasuredPath, effect: PathEffect, width: f32, color: u32, height: f32) -> Div {
     let built = path.stroke(&effect, px(width));
     let error = built.as_ref().err().map(ToString::to_string);
     let built = built.ok();
@@ -58,7 +59,7 @@ pub(super) fn panel(path: &MeasuredPath, effect: PathEffect, width: f32, color: 
         .min_w_0()
         .h(px(height))
         .rounded_lg()
-        .bg(rgb(0x191f23))
+        .bg(look.chrome().panel_background)
         .overflow_hidden()
         .child(
             canvas(
@@ -79,5 +80,5 @@ pub(super) fn panel(path: &MeasuredPath, effect: PathEffect, width: f32, color: 
             )
             .size_full(),
         )
-        .children(error.map(|e| div().text_sm().text_color(rgb(0xffa99c)).child(e)))
+        .children(error.map(|e| div().text_sm().text_color(look.resolve_role(gpui_luma_look_radix::SemanticRole::Destructive).hsla()).child(e)))
 }

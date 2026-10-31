@@ -6967,8 +6967,6 @@ dependencies = [
 [[package]]
 name = "xgpui-macos"
 version = "2.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e913ab71100e8eb154bd731c3d727c42878f6cebd5cafbe86943cc1ffb6ba9e0"
 dependencies = [
  "accesskit",
  "accesskit_macos",
@@ -6990,6 +6988,7 @@ dependencies = [
  "objc2-app-kit 0.3.2",
  "objc2-core-video",
  "objc2-foundation 0.3.2",
+ "objc2-quartz-core 0.3.2",
  "objc2-user-notifications",
  "parking_lot",
  "raw-window-handle",

@@ -229,8 +229,8 @@ impl Render for GradientBuilder {
                     .child(
                         div().absolute().top(px(8.)).left(px(8.))
                             .px_2().py_1().rounded(px(4.))
-                            .bg(gpui::hsla(0., 0., 0., 0.65))
-                            .text_color(gpui::white()).text_size(px(11.))
+                            .bg(chrome.panel_background)
+                            .text_color(chrome.body_text).text_size(px(11.))
                             .child(performance_overlay),
                     );
                 let preview = div()
@@ -362,8 +362,8 @@ impl Render for GradientBuilder {
                             .child(
                                 div().absolute().top(px(8.)).left(px(8.))
                                     .px_2().py_1().rounded(px(4.))
-                                    .bg(gpui::hsla(0., 0., 0., 0.65))
-                                    .text_color(gpui::white()).text_size(px(11.))
+                                    .bg(chrome.panel_background)
+                                    .text_color(chrome.body_text).text_size(px(11.))
                                     .child(mesh_hud),
                             )
                             .child(
@@ -550,10 +550,11 @@ pub(super) fn render_stop_row(
     _label_style: LumaTextStyle,
     value_style: LumaTextStyle,
     chrome: gpui_luma::theme::LumaChrome,
+    interaction: crate::theme::InteractionColors,
     builder: Entity<GradientBuilder>,
 ) -> impl IntoElement {
     let background = if selected {
-        chrome.border
+        interaction.selected
     } else {
         chrome.panel_background
     };
@@ -568,6 +569,8 @@ pub(super) fn render_stop_row(
         .p(px(6.0))
         .rounded(px(4.0))
         .bg(background)
+        .hover(move |style| style.bg(interaction.hovered))
+        .active(move |style| style.bg(interaction.pressed))
         .cursor_pointer()
         .child(div().w(px(20.0)).flex_shrink_0().child(index.to_string()))
         .child(
@@ -675,13 +678,15 @@ pub(super) fn render_mesh_point_row(
     point: MeshPoint,
     selected: bool,
     label_style: LumaTextStyle,
-    chrome: gpui_luma::theme::LumaChrome,
+    look: &radix::Look,
     builder: Entity<GradientBuilder>,
 ) -> impl IntoElement {
+    let chrome = look.chrome();
+    let interaction = look.interaction_colors();
     let bounds_builder = builder.clone();
     let swatch_builder = builder.clone();
     let background = if selected {
-        chrome.border
+        interaction.selected
     } else {
         chrome.panel_background
     };
@@ -695,6 +700,8 @@ pub(super) fn render_mesh_point_row(
         .p(px(6.0))
         .rounded(px(4.0))
         .bg(background)
+        .hover(move |style| style.bg(interaction.hovered))
+        .active(move |style| style.bg(interaction.pressed))
         .cursor_pointer()
         .when(buttons.is_some(), |row| {
             if let Some([delete, _]) = buttons.clone() {
