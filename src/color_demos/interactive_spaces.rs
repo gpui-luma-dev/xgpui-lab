@@ -287,7 +287,7 @@ impl InteractiveSpaces {
     fn render_header(&self) -> Div {
         vstack! {
             div().text_3xl().font_weight(FontWeight::SEMIBOLD).child("Interactive Color Spaces"),
-            self.caption("Explore color models and their representations"),
+            self.caption("Explore color models by comparing one selected color in sRGB, Display P3, OKLCH, and Rec2020."),
         }
         .gap_2()
     }
@@ -376,10 +376,6 @@ impl Render for InteractiveSpaces {
             Err(error) => div().child(format!("Color conversion unavailable: {error}")),
         };
         let content = self.panel().gap_4().p_5()
-            .child(vstack! {
-                div().text_lg().font_weight(FontWeight::SEMIBOLD).child("Color space comparison"),
-                self.caption("One selected color, represented in sRGB, Display P3, OKLCH, and Rec2020"),
-            }.gap_1())
             .child(self.render_field())
             .child(self.caption(format!("Hue across · white → hue → black down · saturation {:.0}%", self.hsv.s * 100.)))
             .child(self.render_field_controls())
@@ -504,7 +500,6 @@ mod tests {
                 assert_eq!(channel.input.read(cx).value(), format!("{:.3}", page.rgb[index]));
             }
         });
-
     }
     #[test]
     fn switching_cpu_gpu_retains_color_and_luma_keyboard_and_drag_behavior() {
