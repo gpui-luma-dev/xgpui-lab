@@ -112,7 +112,6 @@ impl Render for GradientBuilder {
         let rotation_deg = self.rotation_deg;
         let stops = self.preview_stops(cx);
         self.sync_preview_strategy(stops.len());
-        let top_tabs = self.top_tabs.clone();
         let color_picker = self.color_picker.clone();
         let color_picker_open = self.color_picker_open;
         let card_bg = chrome.panel_background;
@@ -486,8 +485,10 @@ impl Render for GradientBuilder {
                     .px(px(16.0))
                     .py(px(6.0))
                     .bg(card_bg)
-                    .child(div().w(px(300.0)).child(top_tabs))
-                    .child(div().text_size(px(11.0)).text_color(chrome.muted_text).child("Untitled gradient")),
+                    .child(div().h(px(32.0)).flex().items_center().text_size(px(13.)).child("Gradients"))
+                    .child(div().flex().items_center().gap_3()
+                        .child(div().text_size(px(11.0)).text_color(chrome.muted_text).child("Untitled gradient"))
+                        .child(self.export_button())),
             )
             .child(div().h(px(1.0)).w_full().flex_shrink_0().bg(chrome.border))
             .child(content)

@@ -14,30 +14,30 @@ test-support = ["gpui-luma/test-support"]
 portable-app = []
 
 [dependencies]
-gpui-wgpu = { package = "xgpui-wgpu", path = "../xgpui/gpui/crates/gpui-wgpu", features = ["test-support"], optional = true }
+gpui-wgpu = { package = "xgpui-wgpu", version = "=1.0.2", features = ["test-support"], optional = true }
 libc = "0.2"
 bytemuck = { version = "1", features = ["derive"] }
 sysinfo = { version = "=0.31.4", default-features = false, features = ["system"] }
-xgpui-parley = { path = "../xgpui/extensions/crates/xgpui-parley", features = ["system-fonts"] }
+xgpui-parley = { version = "=0.2.2", features = ["system-fonts"] }
 parley = { version = "=0.12.0", default-features = false, features = ["std", "complex-scripts"] }
 skrifa = "=0.44.0"
 unicode-segmentation = "1"
-xgpui-media = { path = "../xgpui/extensions/crates/xgpui-media" }
-xgpui-svg = { path = "../xgpui/extensions/crates/xgpui-svg" }
+xgpui-media = { version = "=0.4.0" }
+xgpui-svg = { version = "=0.2.2" }
 tempfile = "3"
-xgpui-color = { path = "../xgpui/extensions/crates/xgpui-color" }
-xgpui-shader = { path = "../xgpui/extensions/crates/xgpui-shader", features = ["portable-shaders"] }
-xgpui-gamut = { path = "../xgpui/extensions/crates/xgpui-gamut", features = ["instanced"] }
+xgpui-color = { version = "=0.3.0" }
+xgpui-shader = { version = "=0.3.0", features = ["portable-shaders"] }
+xgpui-gamut = { version = "=0.2.2", features = ["instanced"] }
 anyhow = "1"
 serde_json = "1"
 sha2 = "0.10"
 serde = { version = "1", features = ["derive"] }
-gpui = { package = "xgpui", path = "../xgpui/gpui/crates/gpui", features = ["profiler", "test-support"] }
-gpui-luma = { path = "../gpui-luma/crates/sdk" }
-gpui-luma-color = { path = "../gpui-luma/crates/luma-color" }
-gpui_platform = { package = "xgpui-platform", path = "../xgpui/gpui/crates/gpui-platform", features = ["font-kit", "test-support"] }
+gpui = { package = "xgpui", version = "=1.2.0", features = ["profiler", "test-support"] }
+gpui-luma = { version = "=0.2.5" }
+gpui-luma-color = { version = "=0.2.5" }
+gpui_platform = { package = "xgpui-platform", version = "=1.0.2", features = ["font-kit", "test-support"] }
 image = "0.25"
-gpui-luma-look-radix = { path = "../gpui-luma/crates/look-radix" }
+gpui-luma-look-radix = { version = "=0.2.5" }
 lucide-svg-static = { package = "lucide-static-svg", version = "1.45.0" }
 palette = "0.7.7"
 smallvec = "1"
@@ -84,21 +84,9 @@ opt-level = 3
 lto = "thin"
 codegen-units = 1
 
-# Use the sibling xgpui framework/backends; supporting crates come from crates.io.
-[patch.crates-io]
-"xgpui" = { path = "../xgpui/gpui/crates/gpui" }
-"xgpui-apple" = { path = "../xgpui/gpui/crates/gpui-apple" }
-"xgpui-linux" = { path = "../xgpui/gpui/crates/gpui-linux" }
-"xgpui-macos" = { path = "../xgpui/gpui/crates/gpui-macos" }
-"xgpui-macros" = { path = "../xgpui/gpui/crates/gpui-macros" }
-"xgpui-platform" = { path = "../xgpui/gpui/crates/gpui-platform" }
-"xgpui-web" = { path = "../xgpui/gpui/crates/gpui-web" }
-"xgpui-wgpu" = { path = "../xgpui/gpui/crates/gpui-wgpu" }
-"xgpui-windows" = { path = "../xgpui/gpui/crates/gpui-windows" }
-
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString"] }
 objc2-core-foundation = "0.3.2"
 objc2-core-video = "0.3.2"
-gpui-apple = { package = "xgpui-apple", path = "../xgpui/gpui/crates/gpui-apple", features = ["test-support"] }
+gpui-apple = { package = "xgpui-apple", version = "=2.0.1", features = ["test-support"] }

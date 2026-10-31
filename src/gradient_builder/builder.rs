@@ -40,7 +40,6 @@ use mesh::{
 
 pub struct GradientBuilder {
     look: Arc<Look>,
-    top_tabs: Entity<Tabs>,
     section_accordions: Vec<Vec<Entity<gpui_luma::controls::accordion::AccordionControl>>>,
     selected_tab: BuilderTab,
     gradient_stops: Entity<SliderControl>,
@@ -155,6 +154,11 @@ pub struct GradientBuilder {
 impl GradientBuilder {
     pub(crate) fn export_button(&self) -> Entity<Button> {
         self.export_button.clone()
+    }
+
+    pub(crate) fn activate_page(&mut self, page: &'static str, cx: &mut Context<Self>) {
+        self.handle_top_tabs_event(&TabsEvent::Activate { tab_id: page.into(), label: page.into() }, cx);
+        cx.notify();
     }
 
     pub fn new(look: Arc<Look>, cx: &mut Context<Self>) -> Self {
@@ -370,7 +374,6 @@ impl GradientBuilder {
             .tooltip(Tooltip::new("Copy gradient CSS"), cx);
         let mut builder = Self {
             look: look.clone(),
-            top_tabs: top_tabs.clone(),
             section_accordions: Vec::new(),
             selected_tab: BuilderTab::Gradients,
             gradient_stops: gradient_stops.clone(),
@@ -729,12 +732,8 @@ mod tests {
         look.set_mode(ThemeMode::Dark);
         let (view, cx) = app.add_window_view(|_, cx| GradientBuilder::new(look.clone(), cx));
         cx.run_until_parked();
-        let tabs = cx.update(|_, cx| view.read(cx).top_tabs.clone());
         for id in ["freeform", "mesh", "gradients", "freeform"] {
-            tabs.update(cx, |tabs, cx| {
-                tabs.set_active(id, cx);
-                cx.emit(TabsEvent::Activate { tab_id: id.into(), label: id.into() });
-            });
+            view.update(cx, |view, cx| view.activate_page(id, cx));
             cx.run_until_parked();
             if id == "freeform" {
                 view.update(cx, |view, cx| {
@@ -774,13 +773,9 @@ mod tests {
         app.update(|cx| gpui_luma::init(cx).expect("initialize SDK"));
         let (view, cx) = app.add_window_view(|_, cx| GradientBuilder::new(Look::built_in().into(), cx));
         cx.run_until_parked();
-        let tabs = cx.update(|_, cx| view.read(cx).top_tabs.clone());
         let mut freeform_visible = true;
         for id in ["gradients", "mesh", "freeform", "mesh", "freeform"] {
-            tabs.update(cx, |tabs, cx| {
-                tabs.set_active(id, cx);
-                cx.emit(TabsEvent::Activate { tab_id: id.into(), label: id.into() });
-            });
+            view.update(cx, |view, cx| view.activate_page(id, cx));
             cx.run_until_parked();
             cx.update(|_, cx| {
                 let builder = view.read(cx);

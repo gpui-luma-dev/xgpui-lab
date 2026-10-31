@@ -2,7 +2,7 @@
 //! Copyright 2019 WebGPU Samples Contributors; see licenses/ShaderDepot-BSD-3-Clause.txt.
 use super::*;
 use xgpui_shader::{
-    experimental,
+    shader_paint,
     instanced::{InstanceField, ShaderInstance},
     painted, WindowShaderExt,
 };
@@ -29,14 +29,14 @@ impl ShaderInstance for GridInstance {
     ];
 }
 pub(crate) struct GridPrograms {
-    pub v1: experimental::ShaderProgram,
+    pub v1: shader_paint::ShaderProgram,
     pub v2: ShaderProgram<GridInstance>,
 }
 impl GridPrograms {
     pub fn new() -> anyhow::Result<Self> {
         let common = include_str!("grid.wgsl");
         Ok(Self {
-            v1: experimental::ShaderProgram::new_v1(&format!(
+            v1: shader_paint::ShaderProgram::new(&format!(
                 "{common}\nfn paint(input: PaintInput) -> vec4<f32> {{ return grid_color(input.uv, parameters); }}"
             ))?,
             v2: ShaderProgram::new(&format!(
@@ -44,9 +44,9 @@ impl GridPrograms {
             ))?,
         })
     }
-    pub fn paint(&self, p: GridInstance) -> anyhow::Result<experimental::ShaderPaint> {
+    pub fn paint(&self, p: GridInstance) -> anyhow::Result<shader_paint::ShaderPaint> {
         self.v1.paint(
-            experimental::ShaderParameters::new()
+            shader_paint::ShaderParameters::new()
                 .float("grid_dimensions", p.grid_dimensions)
                 .float("cell_origin_x", p.cell_origin_x)
                 .float("cell_origin_y", p.cell_origin_y)
@@ -251,7 +251,7 @@ mod tests {
         assert_eq!(GridInstance::FIELDS.iter().map(|f| f.offset).collect::<Vec<_>>(), [0, 4, 8, 12]);
         let programs = GridPrograms::new().unwrap();
         programs.paint(GridInstance::default()).unwrap();
-        assert!(programs.v1.paint(experimental::ShaderParameters::new()).is_err());
+        assert!(programs.v1.paint(shader_paint::ShaderParameters::new()).is_err());
         assert!(programs.paint(GridInstance { line_width: f32::NAN, ..Default::default() }).is_err());
         let wrong = include_str!("grid.wgsl").replace("grid_dimensions: f32", "dimensions: f32");
         assert!(

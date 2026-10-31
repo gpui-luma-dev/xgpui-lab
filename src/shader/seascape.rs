@@ -1,7 +1,7 @@
 //! App-side host for TDM's Seascape. The adapted WGSL retains CC BY-NC-SA 3.0.
 use super::*;
 use xgpui_shader::{
-    experimental,
+    shader_paint,
     instanced::{InstanceField, ShaderInstance},
     painted, WindowShaderExt,
 };
@@ -85,7 +85,7 @@ fn expand_v1(mut source: String) -> String {
     source
 }
 pub(crate) struct SeaPrograms {
-    pub v1: experimental::ShaderProgram,
+    pub v1: shader_paint::ShaderProgram,
     pub v2: ShaderProgram<SeaInstance>,
 }
 impl SeaPrograms {
@@ -95,14 +95,14 @@ impl SeaPrograms {
             v2: ShaderProgram::new(&format!(
                 "{source}\nfn shade(i: ShaderInput, p: Parameters) -> vec4<f32> {{ return seascape_color(i.uv, i.size, p); }}"
             ))?,
-            v1: experimental::ShaderProgram::new_v1(&format!(
+            v1: shader_paint::ShaderProgram::new(&format!(
                 "{}\nfn paint(i: PaintInput) -> vec4<f32> {{ return seascape_color(i.uv, i.size, parameters); }}",
                 expand_v1(source.into())
             ))?,
         })
     }
-    pub fn paint(&self, p: SeaInstance) -> anyhow::Result<experimental::ShaderPaint> {
-        let mut fields = experimental::ShaderParameters::new();
+    pub fn paint(&self, p: SeaInstance) -> anyhow::Result<shader_paint::ShaderPaint> {
+        let mut fields = shader_paint::ShaderParameters::new();
         for (field, value) in SeaInstance::FIELDS.iter().zip(p.values()) {
             fields = fields.float(field.name, value);
         }
@@ -271,7 +271,7 @@ mod tests {
         programs.paint(SeaInstance::default()).unwrap();
         assert!(programs.paint(SeaInstance { time: f32::INFINITY, ..Default::default() }).is_err());
         let source = include_str!("seascape.wgsl");
-        let result = experimental::ShaderProgram::new_v1(&format!(
+        let result = shader_paint::ShaderProgram::new(&format!(
             "{source}\nfn paint(i: PaintInput) -> vec4<f32> {{ return seascape_color(i.uv, i.size, parameters); }}"
         ));
         assert!(result.unwrap_err().to_string().contains("loops are not supported"));

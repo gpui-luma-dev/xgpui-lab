@@ -1,16 +1,35 @@
-use gpui::{Context, Entity, FocusHandle, Render, Subscription, Window, div, prelude::*, px};
+use gpui::{Context, Entity, FocusHandle, Render, Window, div, prelude::*, px};
 use gpui_luma_color::style::{ColorControlTheme, set_active_color_control_theme};
 use gpui_luma::focus::LumaFocusScopeExt;
-use gpui_luma::shell::TitleBar;
 use gpui_luma::theme::ThemeMode;
 use gpui_luma_look_radix::Look;
 use crate::theme::ColorVizLookExt;
-use std::sync::Arc;
-use gpui_luma::prelude::TooltipEntityExt;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+use std::{cell::RefCell, rc::Rc};
+use gpui_luma::controls::{
+    resizable_panels::{
+        ResizablePanels, ResizablePanelSpec, ResizablePanelsEvent, PanelHideMode, ResizeHandleVisibility,
+        ResizeCollapseBehavior, ResizeCollapseMode, ResizeCollapseDirection,
+    },
+    accordion::{Accordion, AccordionContent, AccordionItem, AccordionTrigger},
+};
+use gpui_luma::prelude::HasPresenter;
+use gpui_luma::controls::button::ButtonEventExt;
+use gpui_luma::controls::resizable_panels::ResizablePanelsEventExt;
+use gpui_luma::theme::LumaThemeSyncExt;
 
 use crate::gradient_builder::GradientBuilder;
 use crate::compositions::ColorCompositions;
 use crate::extension_pane::ExtensionPane;
+
+mod nav_accordion;
+mod shell_style;
+mod titlebar;
+use shell_style::*;
+use titlebar::TitlebarControls;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Workspace {
@@ -24,17 +43,132 @@ enum Workspace {
     Svg,
 }
 
+type Section = (Workspace, &'static str, &'static [(&'static str, &'static str)]);
+
+const SECTIONS: &[Section] = &[
+    (
+        Workspace::Gradients,
+        "Gradients",
+        &[("gradients", "Linear"), ("mesh", "Mesh"), ("freeform", "Freeform")],
+    ),
+    (
+        Workspace::Compositions,
+        "Compositions",
+        &[
+            ("picker", "Color Picker"),
+            ("hsv-plane", "HSV Plane"),
+            ("hsv-wheel", "HSV Wheel"),
+            ("sv-triangle", "SV Triangle"),
+            ("split-ring", "Split Ring"),
+            ("harmonies", "Color Harmonies"),
+        ],
+    ),
+    (
+        Workspace::Color,
+        "xgpui-color",
+        &[
+            ("Color Spaces", "Color Spaces"),
+            ("Conversions", "Conversions"),
+            ("Interpolation", "Interpolation"),
+            ("Gamut Mapping", "Gamut Mapping"),
+            ("CPU Gradients", "CPU Gradients"),
+        ],
+    ),
+    (
+        Workspace::Gamut,
+        "xgpui-gamut",
+        &[
+            ("Wide Color Fills", "Wide Color Fills"),
+            ("Wide Gradients", "Wide Gradients"),
+            ("Gamut Mapping", "Gamut Mapping"),
+            ("Presentation", "Presentation"),
+            ("Benchmarks", "Benchmarks"),
+        ],
+    ),
+    (
+        Workspace::Media,
+        "xgpui-media",
+        &[
+            ("Images", "Images"),
+            ("Textures & Mipmaps", "Textures & Mipmaps"),
+            ("Image Filters", "Image Filters"),
+            ("Linear Adjustments", "Linear Adjustments"),
+            ("Float / P3", "Float / P3"),
+            ("Tiled Canvas", "Tiled Canvas"),
+            ("Video Frames", "Video Frames"),
+            ("Resource Limits", "Resource Limits"),
+            ("Benchmarks", "Benchmarks"),
+        ],
+    ),
+    (
+        Workspace::Parley,
+        "xgpui-parley",
+        &[
+            ("Text Shaping", "Text Shaping"),
+            ("Line Layout", "Line Layout"),
+            ("Paragraphs", "Paragraphs"),
+            ("Fonts & Fallback", "Fonts & Fallback"),
+            ("Rasterization", "Rasterization"),
+            ("Scrolling", "Scrolling"),
+            ("Benchmarks", "Benchmarks"),
+        ],
+    ),
+    (
+        Workspace::Shader,
+        "xgpui-shader",
+        &[
+            ("Gradients", "Gradients"),
+            ("Mesh Editor", "Mesh Editor"),
+            ("Gradient Paints", "Gradient Paints"),
+            ("WGSL Paints", "WGSL Paints"),
+            ("Shader Depot: Grid", "Shader Depot: Grid"),
+            ("Shadertoy: Seascape", "Shadertoy: Seascape"),
+            ("Instancing", "Instancing"),
+            ("Typography", "Typography"),
+            ("Brushes", "Brushes"),
+            ("Layer Effects", "Layer Effects"),
+            ("Shadows", "Shadows"),
+            ("Borders", "Borders"),
+            ("Benchmarks", "Benchmarks"),
+        ],
+    ),
+    (
+        Workspace::Svg,
+        "xgpui-svg",
+        &[
+            ("Rendering", "Rendering"),
+            ("Scaling", "Scaling"),
+            ("Path Effects", "Path Effects"),
+            ("Scheduling & Cache", "Scheduling & Cache"),
+            ("Benchmarks", "Benchmarks"),
+        ],
+    ),
+];
+
+struct NavigationEntry {
+    workspace: Workspace,
+    page: &'static str,
+    button: Entity<gpui_luma::controls::button::Button>,
+    selected: Arc<AtomicBool>,
+}
+
 pub struct XgpuiLabApp {
     focus_scope: FocusHandle,
     look: Arc<Look>,
+    nav_look: Arc<Look>,
     gradient_builder: Entity<GradientBuilder>,
     compositions: Option<Entity<ColorCompositions>>,
-    navigation: Vec<(Workspace, Entity<gpui_luma::controls::button::Button>)>,
+    navigation: Vec<NavigationEntry>,
+    panels: Entity<ResizablePanels>,
+    rail: Entity<gpui_luma::controls::frame::FrameControl>,
+    sidebar_width: gpui::Pixels,
+    titlebar: TitlebarControls,
+    content: Rc<RefCell<gpui::AnyView>>,
+    active_page: &'static str,
     extensions: Vec<(Workspace, Entity<ExtensionPane>)>,
     active: Workspace,
     captured_color_mode: Option<gpui::WindowColorMode>,
     presentation_pending: bool,
-    _subscriptions: Vec<Subscription>,
 }
 
 impl XgpuiLabApp {
@@ -42,119 +176,174 @@ impl XgpuiLabApp {
         let p3_error = window.set_color_mode(gpui::WindowColorMode::WideGamutSdr).err().map(|error| error.to_string());
         let focus_scope = cx.focus_handle();
         let look = crate::theme::default_look();
+        let nav_look = Arc::new(look.fork());
+        nav_look.set_palettes(gpui_luma_look_radix::Accent::Gray, gpui_luma_look_radix::Gray::Gray);
         sync_color_control_theme(&look);
         let gradient_builder = cx.new(|cx| GradientBuilder::new(look.clone(), cx));
-        let extensions = [
-            (
-                Workspace::Color,
-                "xgpui-color-tabs",
-                &["Color Spaces", "Conversions", "Interpolation", "Gamut Mapping", "CPU Gradients"][..],
-            ),
-            (
-                Workspace::Gamut,
-                "xgpui-gamut-tabs",
-                &["Wide Color Fills", "Wide Gradients", "Gamut Mapping", "Presentation", "Benchmarks"][..],
-            ),
-            (
-                Workspace::Media,
-                "xgpui-media-tabs",
-                &[
-                    "Images",
-                    "Textures & Mipmaps",
-                    "Image Filters",
-                    "Linear Adjustments",
-                    "Float / P3",
-                    "Tiled Canvas",
-                    "Video Frames",
-                    "Resource Limits",
-                    "Benchmarks",
-                ][..],
-            ),
-            (
-                Workspace::Parley,
-                "xgpui-parley-tabs",
-                &[
-                    "Text Shaping",
-                    "Line Layout",
-                    "Paragraphs",
-                    "Fonts & Fallback",
-                    "Rasterization",
-                    "Scrolling",
-                    "Benchmarks",
-                ][..],
-            ),
-            (
-                Workspace::Shader,
-                "xgpui-shader-tabs",
-                &[
-                    "Gradients",
-                    "Mesh Editor",
-                    "Gradient Paints",
-                    "WGSL Paints",
-                    "Shader Depot: Grid",
-                    "Shadertoy: Seascape",
-                    "Instancing",
-                    "Typography",
-                    "Brushes",
-                    "Layer Effects",
-                    "Shadows",
-                    "Borders",
-                    "Benchmarks",
-                ][..],
-            ),
-            (
-                Workspace::Svg,
-                "xgpui-svg-tabs",
-                &["Rendering", "Scaling", "Path Effects", "Scheduling & Cache", "Benchmarks"][..],
-            ),
-        ]
-        .map(|(workspace, id, labels)| {
-            (workspace, cx.new(|cx| ExtensionPane::new(id, labels, look.clone(), p3_error.clone(), cx)))
-        })
-        .to_vec();
-        let navigation = [
-            (Workspace::Gradients, "Gradients", lucide_svg_static::Icon::Blend),
-            (Workspace::Compositions, "Compositions", lucide_svg_static::Icon::Palette),
-            (Workspace::Color, "xgpui-color", lucide_svg_static::Icon::Pipette),
-            (Workspace::Gamut, "xgpui-gamut", lucide_svg_static::Icon::SwatchBook),
-            (Workspace::Media, "xgpui-media", lucide_svg_static::Icon::Film),
-            (Workspace::Parley, "xgpui-parley", lucide_svg_static::Icon::TypeIcon),
-            (Workspace::Shader, "xgpui-shader", lucide_svg_static::Icon::Sparkles),
-            (Workspace::Svg, "xgpui-svg", lucide_svg_static::Icon::Shapes),
-        ]
-        .map(|(workspace, label, icon)| {
-            let button = crate::theme::icon_button(format!("xgpui-nav-{label}"), icon)
-                .look(&look)
-                .content_only()
-                .spawn(cx)
-                .tooltip(gpui_luma::controls::tooltip::Tooltip::new(label), cx);
-            (workspace, button)
-        })
-        .to_vec();
-        let mut subscriptions = Vec::new();
-        for (workspace, button) in &navigation {
-            let workspace = *workspace;
-            subscriptions.push(cx.subscribe(
-                button,
-                move |this, _, event: &gpui_luma::controls::button::ButtonEvent, cx| {
-                    if event.is_click() {
-                        for (id, pane) in &this.extensions {
-                            if *id != workspace {
-                                pane.update(cx, |pane, cx| pane.deactivate(cx));
-                            }
-                        }
-                        this.active = workspace;
-                        if workspace == Workspace::Compositions && this.compositions.is_none() {
-                            this.compositions = Some(cx.new(|cx| ColorCompositions::new(this.look.clone(), cx)));
-                        }
-                        cx.notify();
-                    }
-                },
-            ));
+        let extensions = SECTIONS
+            .iter()
+            .filter_map(|&(workspace, _, _)| {
+                let id = match workspace {
+                    Workspace::Gradients | Workspace::Compositions => return None,
+                    Workspace::Color => "xgpui-color-tabs",
+                    Workspace::Gamut => "xgpui-gamut-tabs",
+                    Workspace::Media => "xgpui-media-tabs",
+                    Workspace::Parley => "xgpui-parley-tabs",
+                    Workspace::Shader => "xgpui-shader-tabs",
+                    Workspace::Svg => "xgpui-svg-tabs",
+                };
+                Some((workspace, cx.new(|cx| ExtensionPane::new(id, look.clone(), p3_error.clone(), cx))))
+            })
+            .collect::<Vec<_>>();
+        let mut navigation = Vec::new();
+        let mut items = Vec::new();
+        for &(workspace, label, entries) in SECTIONS {
+            let mut rows = Vec::new();
+            for &(page, title) in entries {
+                let selected = Arc::new(AtomicBool::new(workspace == Workspace::Gradients && page == "gradients"));
+                let paint_selected = selected.clone();
+                let entry_look = nav_look.clone();
+                let label_look = nav_look.clone();
+                let label_selected = selected.clone();
+                let button = gpui_luma_look_radix::Button::new(format!("index-{label}-{page}"))
+                    .look(nav_look.as_ref())
+                    .ghost()
+                    .gray()
+                    .size(gpui_luma_look_radix::ButtonSize::One)
+                    .content(move |_, _| {
+                        let step = if label_selected.load(Ordering::Relaxed) { 12 } else { 11 };
+                        div()
+                            .text_color(label_look.resolve_step(gpui_luma_look_radix::ScaleFamily::Gray, step).hsla())
+                            .child(title)
+                    })
+                    .with_template_modifier(|row, _| row.w_full())
+                    .on_click(cx, move |this: &mut Self, cx| this.activate(workspace, page, cx))
+                    .spawn(cx);
+                let template = gpui_luma::controls::button::DefaultButtonTemplate::new(
+                    gpui_luma_look_radix::button_family_theme_with(
+                        &nav_look,
+                        gpui_luma_look_radix::ButtonVariant::Ghost,
+                        gpui_luma_look_radix::Paint::gray(),
+                    ),
+                )
+                .with_modifier(move |row, _| {
+                    row.w_full()
+                        .justify_start()
+                        .text_align(gpui::TextAlign::Left)
+                        .when(paint_selected.load(Ordering::Relaxed), |row| row.bg(entry_look.chrome().border))
+                });
+                button.update(cx, |button, cx| button.set_template(Arc::new(template), cx));
+                rows.push(button.clone());
+                navigation.push(NavigationEntry { workspace, page, button, selected });
+            }
+            items.push(
+                AccordionItem::new(
+                    label,
+                    AccordionTrigger::new(label),
+                    AccordionContent::custom(move |_, _| {
+                        div().w_full().flex().flex_col().pl(px(20.)).gap_1().children(rows.clone()).into_any_element()
+                    }),
+                )
+                .expanded(workspace == Workspace::Gradients),
+            );
         }
+        let accordion: Accordion = gpui_luma_look_radix::accordion_builder(&nav_look, "lab-explorer")
+            .size(gpui_luma::theme::ControlSize::Sm)
+            .template(nav_accordion::template(&nav_look))
+            .multiple()
+            .collapsible(true)
+            .item_dividers(false)
+            .content_padding_y(4.)
+            .items(items)
+            .spawn(cx);
+        let content: Rc<RefCell<gpui::AnyView>> = Rc::new(RefCell::new(gradient_builder.clone().into()));
+        let content_view = content.clone();
+        let sidebar_look = nav_look.clone();
+        let content_look = look.clone();
+        let panels = gpui_luma_look_radix::resizable_panels_builder(&look, "shell-2026-panels")
+            .show_border(false)
+            .motion_enabled(true)
+            .handle_visibility(ResizeHandleVisibility::Hover)
+            .double_click_collapse(Some(ResizeCollapseBehavior::new(
+                ResizeCollapseMode::Completely,
+                ResizeCollapseDirection::Left,
+            )))
+            .panel(
+                ResizablePanelSpec::new_render(move || {
+                    div()
+                        .id("lab-explorer-scroll")
+                        .size_full()
+                        .overflow_y_scroll()
+                        .p(px(8.))
+                        .text_color(sidebar_look.chrome().body_text)
+                        .child(
+                            div()
+                                .px_2()
+                                .py_3()
+                                .text_size(px(11.))
+                                .text_color(sidebar_look.chrome().muted_text)
+                                .child("LAB EXPLORER"),
+                        )
+                        .child(accordion.clone())
+                })
+                .size(INITIAL_SIDEBAR_WIDTH)
+                .min(MIN_SIDEBAR_WIDTH)
+                .max(MAX_SIDEBAR_WIDTH),
+            )
+            .panel(
+                ResizablePanelSpec::new_render(move || {
+                    div()
+                        .debug_selector(|| "shell-2026-workspace".into())
+                        .size_full()
+                        .min_w_0()
+                        .bg(content_look.chrome().content_background)
+                        .child(content_view.borrow().clone())
+                })
+                .weight(1.)
+                .min(MIN_WORKSPACE_WIDTH),
+            )
+            .spawn(cx);
+        let rail = spawn_rail(&nav_look, cx);
+        let titlebar = TitlebarControls::new(&look, cx);
+        panels.clone().on_event(cx, |this: &mut Self, event, cx| {
+            if let ResizablePanelsEvent::SizesChanged { sizes_px } = event
+                && let Some(width) = sizes_px.first()
+            {
+                this.sidebar_width = px(*width);
+                cx.notify();
+            }
+        });
+        titlebar.sidebar_toggle.clone().on_click(cx, |this: &mut Self, cx| {
+            this.panels.update(cx, |panels, cx| panels.toggle_panel_hidden(0, PanelHideMode::Completely, cx));
+        });
+        titlebar.theme_toggle.clone().on_click(cx, |this: &mut Self, cx| {
+            let mode = match this.look.mode() {
+                ThemeMode::Light => ThemeMode::Dark,
+                ThemeMode::Dark => ThemeMode::Light,
+            };
+            this.look.set_mode(mode);
+            this.nav_look.set_mode(mode);
+            sync_color_control_theme(&this.look);
+            let icon = if mode == ThemeMode::Dark {
+                lucide_svg_static::Icon::Sun
+            } else {
+                lucide_svg_static::Icon::Moon
+            };
+            this.titlebar.theme_toggle.update(cx, |button, cx| {
+                button.set_presenter(
+                    Arc::new(move |model, _| {
+                        gpui_luma::infra::icon::lucide_icon(icon, model.look.foreground, model.look.icon_size)
+                    }),
+                    cx,
+                );
+            });
+            cx.bump_luma_theme_revision();
+            cx.notify();
+        });
         Self {
             focus_scope,
             look,
+            nav_look,
             gradient_builder,
             compositions: None,
             navigation,
@@ -162,9 +351,85 @@ impl XgpuiLabApp {
             active: Workspace::Gradients,
             captured_color_mode: None,
             presentation_pending: false,
-            _subscriptions: subscriptions,
+            panels,
+            rail,
+            titlebar,
+            sidebar_width: INITIAL_SIDEBAR_WIDTH,
+            content,
+            active_page: "gradients",
         }
     }
+    fn activate(&mut self, workspace: Workspace, page: &'static str, cx: &mut Context<Self>) {
+        for (id, pane) in &self.extensions {
+            if *id != workspace {
+                pane.update(cx, |pane, cx| pane.deactivate(cx));
+            }
+        }
+        self.active = workspace;
+        self.active_page = page;
+        let view: gpui::AnyView = match workspace {
+            Workspace::Gradients => {
+                self.gradient_builder.update(cx, |view, cx| view.activate_page(page, cx));
+                self.gradient_builder.clone().into()
+            }
+            Workspace::Compositions => {
+                let view =
+                    self.compositions.get_or_insert_with(|| cx.new(|cx| ColorCompositions::new(self.look.clone(), cx)));
+                view.update(cx, |view, cx| view.activate_page(page, cx));
+                view.clone().into()
+            }
+            _ => {
+                let (_, pane) = self.extensions.iter().find(|(id, _)| *id == workspace).expect("registered workspace");
+                pane.update(cx, |pane, cx| pane.activate_page(page, cx));
+                pane.clone().into()
+            }
+        };
+        *self.content.borrow_mut() = view;
+        for entry in &self.navigation {
+            entry.selected.store(entry.workspace == workspace && entry.page == page, Ordering::Relaxed);
+            entry.button.update(cx, |_, cx| cx.notify());
+        }
+        self.panels.update(cx, |_, cx| cx.notify());
+        cx.notify();
+    }
+}
+
+// Preserve shell-2026's complete destination rail and footer.
+fn spawn_rail(look: &Look, cx: &mut Context<XgpuiLabApp>) -> Entity<gpui_luma::controls::frame::FrameControl> {
+    use gpui_luma::controls::sidebar::*;
+    use lucide_svg_static::Icon;
+    let mut menu = SidebarMenuBuilder::new("shell-2026-destinations");
+    for (id, label, icon) in [
+        ("home", "Home", Icon::House),
+        ("history", "History", Icon::Clock),
+        ("library", "Library", Icon::BookOpen),
+        ("gallery", "Gallery", Icon::Image),
+        ("activity", "Activity", Icon::AtSign),
+        ("more", "More", Icon::Ellipsis),
+    ] {
+        menu = menu.item(SidebarMenuItemBuilder::new(id, label).icon(icon).active(id == "home"));
+    }
+    let navigation = gpui_luma_look_radix::sidebar_builder(look, "shell-2026-rail")
+        .presentation(SidebarPresentation::Icons)
+        .motion_enabled(false)
+        .auto_hide_scrollbar(true)
+        .sidebar(
+            SidebarBuilder::new("shell-2026-rail-panel")
+                .content(SidebarContentBuilder::new().group(SidebarGroupBuilder::new().menu(menu)))
+                .footer(
+                    SidebarFooterBuilder::new()
+                        .child(SidebarMenuItemBuilder::new("help", "Help").icon(Icon::CircleQuestionMark))
+                        .child(SidebarMenuItemBuilder::new("profile", "Profile").icon(Icon::CircleUser)),
+                ),
+        )
+        .spawn(cx);
+    // shell-2026's transparent, square sidebar frame has an 8 px inset.
+    gpui_luma::controls::frame::FrameBuilder::new("shell-2026-rail-frame")
+        .p(px(8.0))
+        .bg(gpui::transparent_black())
+        .rounded(px(0.0))
+        .child(navigation)
+        .spawn(cx)
 }
 
 fn sync_color_control_theme(look: &Look) {
@@ -203,90 +468,56 @@ impl Render for XgpuiLabApp {
         let chrome = self.look.chrome();
         let sans_family = "System UI".to_string();
 
-        let export_button = self.gradient_builder.read(_cx).export_button();
-        let title_bar = TitleBar::new()
-            .height(crate::app_shell::SHELL_TITLEBAR_HEIGHT)
-            .background_color(chrome.app_background)
-            .border_color(chrome.app_background)
-            .text_color(chrome.title_text)
+        let title_bar = self.titlebar.render(&self.look, self.sidebar_width, _window);
+        let body = div()
+            .size_full()
+            .bg(shell_background(&self.look))
+            .flex()
             .child(
                 div()
-                    .id("color-viz-titlebar")
+                    .debug_selector(|| "shell-2026-rail-bounds".into())
+                    .w(RAIL_WIDTH)
+                    .flex_none()
                     .h_full()
-                    .w_full()
-                    .flex()
-                    .items_center()
-                    .px_2()
-                    .text_color(chrome.title_text)
-                    .font_family(sans_family.clone())
-                    .child(div().text_size(px(14.0)).font_weight(gpui::FontWeight::SEMIBOLD).child("XGPUI Lab"))
-                    .child(div().flex_1())
-                    .when(self.active == Workspace::Gradients, |this| {
-                        this.child(
-                            div()
-                                .mr(px(12.0))
-                                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                                .child(export_button),
-                        )
-                    }),
+                    .child(self.rail.clone()),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .mt(CANVAS_TOP_INSET)
+                    .mr(CANVAS_EDGE_INSET)
+                    .mb(CANVAS_EDGE_INSET)
+                    .relative()
+                    .rounded(CANVAS_RADIUS)
+                    .overflow_hidden()
+                    .border(CANVAS_BORDER)
+                    .border_color(canvas_border_color(&self.look))
+                    .bg(chrome.content_background)
+                    .child(
+                        div()
+                            .debug_selector(|| "shell-2026-sidebar-fill".into())
+                            .absolute()
+                            .top_0()
+                            .bottom_0()
+                            .left_0()
+                            .w(self.sidebar_width)
+                            .rounded_tl(CANVAS_RADIUS - CANVAS_BORDER)
+                            .rounded_bl(CANVAS_RADIUS - CANVAS_BORDER)
+                            .bg(self.nav_look.chrome().panel_background),
+                    )
+                    .child(div().relative().size_full().child(self.panels.clone())),
             );
-
         div()
             .luma_focus_scope(&self.focus_scope)
             .size_full()
             .flex()
             .flex_col()
             .font_family(sans_family)
-            .bg(chrome.app_background)
+            .bg(shell_background(&self.look))
             .text_color(chrome.body_text)
             .child(title_bar)
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .flex()
-                    .pt(px(2.0))
-                    .pr(px(3.0))
-                    .pb(px(3.0))
-                    .child(
-                        div()
-                            .w(px(52.0))
-                            .flex_shrink_0()
-                            .h_full()
-                            .flex()
-                            .flex_col()
-                            .items_center()
-                            .gap_2()
-                            .pt_2()
-                            .children(self.navigation.iter().map(|(workspace, button)| {
-                                div()
-                                    .rounded(px(6.0))
-                                    .when(self.active == *workspace, |rail| rail.bg(chrome.border))
-                                    .child(button.clone())
-                            })),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .h_full()
-                            .rounded(px(10.0))
-                            .border_1()
-                            .border_color(chrome.border)
-                            .overflow_hidden()
-                            .bg(chrome.content_background)
-                            .child(match (self.active, &self.compositions) {
-                                (Workspace::Compositions, Some(view)) => view.clone().into_any_element(),
-                                (Workspace::Gradients, _) => self.gradient_builder.clone().into_any_element(),
-                                _ => self
-                                    .extensions
-                                    .iter()
-                                    .find(|(workspace, _)| *workspace == self.active)
-                                    .map(|(_, pane)| pane.clone().into_any_element())
-                                    .unwrap_or_else(|| div().size_full().into_any_element()),
-                            }),
-                    ),
-            )
+            .child(div().flex_1().min_h_0().child(body))
     }
 }
 
@@ -296,53 +527,210 @@ mod tests {
     use gpui::TestAppContext;
 
     #[test]
-    fn workspace_navigation_loads_compositions_once_and_retains_both_workspaces() {
+    fn sidebar_routes_duplicate_labels_and_retains_workspaces() {
         let mut app = TestAppContext::single();
         app.update(|cx| gpui_luma::init(cx).expect("initialize SDK"));
         let (view, cx) = app.add_window_view(XgpuiLabApp::new);
         cx.run_until_parked();
-        let (gradient_nav, composition_nav, gradients) = cx.update(|_, cx| {
-            let view = view.read(cx);
-            assert!(view.compositions.is_none());
-            (
-                view.navigation.iter().find(|(id, _)| *id == Workspace::Gradients).unwrap().1.clone(),
-                view.navigation.iter().find(|(id, _)| *id == Workspace::Compositions).unwrap().1.clone(),
-                view.gradient_builder.clone(),
-            )
-        });
-        let mut first_compositions = None;
-        for id in ["compositions", "gradients", "compositions"] {
-            let button = if id == "compositions" {
-                &composition_nav
-            } else {
-                &gradient_nav
-            };
+        let gradients = cx.update(|_, cx| view.read(cx).gradient_builder.clone());
+        let mut compositions = None;
+        for (workspace, page) in [
+            (Workspace::Compositions, "harmonies"),
+            (Workspace::Gradients, "mesh"),
+            (Workspace::Color, "Gamut Mapping"),
+            (Workspace::Gamut, "Gamut Mapping"),
+            (Workspace::Compositions, "picker"),
+            (Workspace::Gradients, "freeform"),
+        ] {
+            let button = cx.update(|_, cx| {
+                view.read(cx)
+                    .navigation
+                    .iter()
+                    .find(|entry| entry.workspace == workspace && entry.page == page)
+                    .unwrap()
+                    .button
+                    .clone()
+            });
             button.update(cx, |_, cx| cx.emit(gpui_luma::controls::button::ButtonEvent::Click));
             cx.run_until_parked();
             cx.update(|_, cx| {
-                let view = view.read(cx);
-                assert_eq!(view.active == Workspace::Compositions, id == "compositions");
-                assert_eq!(view.gradient_builder, gradients);
-                let compositions = view.compositions.as_ref().expect("loaded compositions");
-                if let Some(first) = &first_compositions {
-                    assert_eq!(compositions, first);
+                let shell = view.read(cx);
+                assert_eq!((shell.active, shell.active_page), (workspace, page));
+                assert_eq!(shell.gradient_builder, gradients);
+                assert_eq!(shell.navigation.iter().filter(|entry| entry.selected.load(Ordering::Relaxed)).count(), 1);
+                let retained = shell.compositions.as_ref().unwrap();
+                if let Some(first) = &compositions {
+                    assert_eq!(retained, first);
                 } else {
-                    first_compositions = Some(compositions.clone());
+                    compositions = Some(retained.clone());
                 }
             });
         }
     }
+
+    use super::titlebar::{CLOSED_TITLEBAR_WIDTH, titlebar_compartment_width};
+    use gpui_luma::shell::TITLE_BAR_LEFT_PADDING;
+    use gpui::{MouseButton, MouseDownEvent, VisualTestContext, point};
+
+    fn assert_aligned(cx: &mut VisualTestContext) {
+        cx.run_until_parked();
+        let separator = cx.debug_bounds("shell-2026-separator").unwrap();
+        let workspace = cx.debug_bounds("shell-2026-workspace").unwrap();
+        assert!(
+            (separator.origin.x - workspace.origin.x).abs() <= px(1.0),
+            "separator {separator:?}, workspace {workspace:?}"
+        );
+        assert_eq!(cx.debug_bounds("shell-2026-sidebar-fill").unwrap().right(), workspace.left());
+        assert!(separator.bottom() < workspace.top(), "the two separators must remain disconnected");
+        assert_eq!(cx.debug_bounds("shell-2026-rail-bounds").unwrap().size.width, RAIL_WIDTH);
+        assert_eq!(cx.debug_bounds("shell-2026-rail-bounds").unwrap().top(), SHELL_TITLEBAR_HEIGHT);
+    }
+
     #[test]
-    fn shell_rail_routes_to_retained_workspaces() {
+    fn rendered_separator_tracks_drag_and_restores_from_both_collapse_paths() {
+        let mut app = TestAppContext::single();
+        let (view, cx) = app.add_window_view(|window, cx| {
+            gpui_luma::init(cx).unwrap();
+            XgpuiLabApp::new(window, cx)
+        });
+        assert_aligned(cx);
+        let workspace = cx.debug_bounds("shell-2026-workspace").unwrap();
+        let start = point(workspace.left(), workspace.top() + px(100.0));
+        let end = start + point(px(60.0), px(0.0));
+        cx.simulate_mouse_down(start, MouseButton::Left, Default::default());
+        cx.simulate_mouse_move(end, MouseButton::Left, Default::default());
+        cx.simulate_mouse_move(end, MouseButton::Left, Default::default());
+        cx.simulate_mouse_up(end, MouseButton::Left, Default::default());
+        assert_aligned(cx);
+        let resized_width = cx.update(|_, cx| view.read(cx).sidebar_width);
+        assert!(resized_width > INITIAL_SIDEBAR_WIDTH, "drag must resize the sidebar");
+        let samples = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let _subscription = cx.update(|_, cx| {
+            let panels = view.read(cx).panels.clone();
+            let samples = samples.clone();
+            cx.subscribe(&panels, move |_, event: &ResizablePanelsEvent, _| {
+                if let ResizablePanelsEvent::SizesChanged { sizes_px } = event {
+                    samples.borrow_mut().push(sizes_px[0]);
+                }
+            })
+        });
+        let toggle = cx.debug_bounds("shell-2026-toggle-sidebar").unwrap().center();
+        cx.simulate_click(toggle, Default::default());
+        cx.run_until_parked();
+        assert!(
+            samples.borrow().iter().any(|&width| width > 0.0 && width < resized_width.as_f32()),
+            "collapse must publish intermediate animated widths"
+        );
+        let closed_separator = cx.debug_bounds("shell-2026-separator").unwrap();
+        assert_eq!(closed_separator.left(), TITLE_BAR_LEFT_PADDING + CLOSED_TITLEBAR_WIDTH - px(1.0));
+        assert_eq!(cx.debug_bounds("shell-2026-workspace").unwrap().left(), RAIL_WIDTH + CANVAS_BORDER);
+        assert_eq!(cx.debug_bounds("shell-2026-rail-bounds").unwrap().size.width, RAIL_WIDTH);
+        cx.simulate_click(toggle, Default::default());
+        cx.run_until_parked();
+        assert_aligned(cx);
+        assert_eq!(cx.update(|_, cx| view.read(cx).sidebar_width), resized_width);
+
+        let workspace = cx.debug_bounds("shell-2026-workspace").unwrap();
+        let seam = point(workspace.left(), workspace.top() + px(100.0));
+        samples.borrow_mut().clear();
+        cx.simulate_event(MouseDownEvent {
+            position: seam,
+            button: MouseButton::Left,
+            click_count: 2,
+            ..Default::default()
+        });
+        cx.simulate_mouse_up(seam, MouseButton::Left, Default::default());
+        assert!(
+            samples.borrow().iter().any(|&width| width > 0.0 && width < resized_width.as_f32()),
+            "double-click collapse must also animate"
+        );
+        cx.run_until_parked();
+        assert_eq!(cx.debug_bounds("shell-2026-separator").unwrap(), closed_separator);
+        cx.simulate_click(toggle, Default::default());
+        cx.run_until_parked();
+        assert_aligned(cx);
+        assert_eq!(cx.update(|_, cx| view.read(cx).sidebar_width), resized_width);
+    }
+
+    #[test]
+    fn separator_tracks_the_body_seam_including_native_and_fullscreen_insets() {
+        for origin in [px(12.0), px(80.0), px(92.0)] {
+            for width in [px(200.0), px(260.0), px(379.5), px(480.0)] {
+                let separator_x = origin + titlebar_compartment_width(width, origin) - px(1.0);
+                assert_eq!(separator_x, RAIL_WIDTH + CANVAS_BORDER + width);
+            }
+        }
+    }
+
+    #[test]
+    fn closed_separator_has_a_fixed_position_after_the_navigation_controls() {
+        assert_eq!(titlebar_compartment_width(px(0.0), px(80.0)), CLOSED_TITLEBAR_WIDTH);
+        assert_eq!(titlebar_compartment_width(px(0.0), px(92.0)), CLOSED_TITLEBAR_WIDTH);
+    }
+
+    #[test]
+    fn folder_icon_precedes_label_and_tracks_expansion_without_changing_page() {
         let mut app = TestAppContext::single();
         app.update(|cx| gpui_luma::init(cx).expect("initialize SDK"));
         let (view, cx) = app.add_window_view(XgpuiLabApp::new);
         cx.run_until_parked();
-        let navigation = cx.update(|_, cx| view.read(cx).navigation.clone());
-        for (expected, button) in navigation.iter().chain(navigation.iter().rev()) {
-            button.update(cx, |_, cx| cx.emit(gpui_luma::controls::button::ButtonEvent::Click));
+        let label = cx.debug_bounds("nav-label-Gradients").unwrap();
+        let folder = cx.debug_bounds("nav-folder-Gradients-open").unwrap();
+        assert!((label.left() - folder.right() - px(6.)).abs() < px(1.));
+        let header = cx.debug_bounds("accordion-trigger-Gradients").unwrap();
+        cx.simulate_click(header.center(), Default::default());
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("nav-folder-Gradients-closed").is_some());
+        cx.simulate_click(header.center(), Default::default());
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("nav-folder-Gradients-open").is_some());
+        cx.update(|_, cx| {
+            let shell = view.read(cx);
+            assert_eq!((shell.active, shell.active_page), (Workspace::Gradients, "gradients"));
+        });
+    }
+
+    #[test]
+    fn theme_toggle_switches_radix_and_keeps_selected_page() {
+        let mut app = TestAppContext::single();
+        app.update(|cx| gpui_luma::init(cx).expect("initialize SDK"));
+        let (view, cx) = app.add_window_view(XgpuiLabApp::new);
+        cx.run_until_parked();
+        let toggle = cx.update(|_, cx| view.read(cx).titlebar.theme_toggle.clone());
+        for mode in [ThemeMode::Light, ThemeMode::Dark] {
+            toggle.update(cx, |_, cx| cx.emit(gpui_luma::controls::button::ButtonEvent::Click));
             cx.run_until_parked();
-            cx.update(|_, cx| assert_eq!(view.read(cx).active, *expected));
+            cx.update(|_, cx| {
+                let shell = view.read(cx);
+                assert_eq!(shell.look.mode(), mode);
+                assert_eq!((shell.active, shell.active_page), (Workspace::Gradients, "gradients"));
+            });
+        }
+    }
+
+    #[test]
+    fn sidebar_toggle_retains_width_and_selected_content() {
+        let mut app = TestAppContext::single();
+        app.update(|cx| gpui_luma::init(cx).expect("initialize SDK"));
+        let (view, cx) = app.add_window_view(XgpuiLabApp::new);
+        cx.run_until_parked();
+        let (split, toggle) = cx.update(|_, cx| {
+            let shell = view.read(cx);
+            (shell.panels.clone(), shell.titlebar.sidebar_toggle.clone())
+        });
+        let width = cx.update(|_, cx| split.read(cx).panel_sizes_px()[0]);
+        for collapsed in [true, false] {
+            toggle.update(cx, |_, cx| cx.emit(gpui_luma::controls::button::ButtonEvent::Click));
+            cx.run_until_parked();
+            cx.update(|_, cx| {
+                assert_eq!(split.read(cx).is_panel_hidden(0), collapsed);
+                if !collapsed {
+                    assert!((split.read(cx).panel_sizes_px()[0] - width).abs() < 1.);
+                }
+                let shell = view.read(cx);
+                assert_eq!((shell.active, shell.active_page), (Workspace::Gradients, "gradients"));
+                assert!(shell.compositions.is_none());
+            });
         }
     }
 }

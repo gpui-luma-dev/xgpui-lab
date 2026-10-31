@@ -1,5 +1,5 @@
 use super::*;
-use xgpui_shader::experimental::ShaderPaint;
+use xgpui_shader::shader_paint::ShaderPaint;
 
 #[derive(Debug)]
 struct LogicalSource(ShaderPaint);
@@ -56,10 +56,10 @@ pub(super) fn verify(renderer: &mut dyn PlatformHeadlessRenderer) -> Result<()> 
     check(image.get_pixel(70, 39).0, [13, 16, 26, 255])?;
     // Unused uniforms must remain legal: the backend owns explicit bindings,
     // even when a shader compiler optimizes every user parameter away.
-    let constant = xgpui_shader::experimental::ShaderProgram::new_v1(
+    let constant = xgpui_shader::shader_paint::ShaderProgram::new(
         "struct Parameters { ignored: f32 } fn paint(input: PaintInput) -> vec4<f32> { return vec4(0.25,0.5,0.75,1.); }",
     )?;
-    let constant = constant.paint(xgpui_shader::experimental::ShaderParameters::new().float("ignored", 1.))?;
+    let constant = constant.paint(xgpui_shader::shader_paint::ShaderParameters::new().float("ignored", 1.))?;
     let image = renderer.render_scene_to_image(&scene(Arc::new(constant), false, 1.), extent)?;
     check(image.get_pixel(70, 39).0, [64, 128, 191, 255])?;
     Ok(())

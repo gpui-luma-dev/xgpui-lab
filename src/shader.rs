@@ -134,7 +134,7 @@ impl Parameter {
 }
 
 struct Programs {
-    wash: xgpui_shader::experimental::ShaderProgram,
+    wash: xgpui_shader::shader_paint::ShaderProgram,
     minimal: ShaderProgram<EffectInstance>,
     glow: ShaderProgram<EffectInstance>,
     particles: ShaderProgram<EffectInstance>,
@@ -143,7 +143,7 @@ struct Programs {
 impl Programs {
     fn new() -> anyhow::Result<Self> {
         Ok(Self {
-            wash: xgpui_shader::experimental::ShaderProgram::new_v1(include_str!("shader/portable-wash.wgsl"))?,
+            wash: xgpui_shader::shader_paint::ShaderProgram::new(include_str!("shader/portable-wash.wgsl"))?,
             minimal: ShaderProgram::new(include_str!("shader/minimal.wgsl"))?,
             glow: ShaderProgram::new(PULSE_GLOW)?,
             particles: ShaderProgram::new(PARTICLE)?,
