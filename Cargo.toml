@@ -9,7 +9,7 @@ publish = false
 # Opt-in app-side Metal/wgpu parity validation for the Grid sample.
 grid-wgpu = ["dep:gpui-wgpu", "xgpui-shader/wgpu"]
 # Headless exposition and event-log tests; does not launch XGPUI Lab.
-test-support = ["gpui-luma/test-support"]
+test-support = ["gpui-luma/test-support", "gpui-luma-color/test-support"]
 # Identifies the distributable build; embedded benchmarks remain available.
 portable-app = []
 
@@ -95,3 +95,6 @@ gpui-apple = { package = "xgpui-apple", version = "=2.0.1", features = ["test-su
 # Remove after a registry release includes the CALayer background fix.
 [patch.crates-io]
 xgpui-macos = { path = "patches/xgpui-macos" }
+
+# Prototype field paint hook; shader stays app-owned until the SDK API is upstreamed.
+gpui-luma-color = { path = "patches/gpui-luma-color" }

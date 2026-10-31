@@ -2109,8 +2109,6 @@ dependencies = [
 [[package]]
 name = "gpui-luma-color"
 version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9cbff07373a9b347145348afebb32eface39b9296eae5338dcfd5995bc2c2eb"
 dependencies = [
  "anyhow",
  "gpui-luma",

@@ -1,123 +1,152 @@
-//! A retained, interactive successor to the original Color Spaces reference page.
+//! Interactive source-space comparisons using Luma controls and xgpui-color.
 use std::sync::Arc;
+use super::source_field::{self, Coordinates, FieldSettings, NAMES, rgba, hex};
 
-use gpui::{prelude::*, *};
+use gpui::{
+    App, Context, Div, Entity, FontWeight, IntoElement, Render, Rgba, SharedString, Subscription, Window, div,
+    prelude::*, px,
+};
 use gpui_luma::{
-    controls::{slider::Slider, textfield::TextField},
+    controls::{slider::Slider, switch::Switch, textfield::TextField},
+    infra::ElementExt,
+    prelude::HasPresenter,
+    hstack, vstack,
 };
 use gpui_luma_color::{
-    color_field::{ColorFieldEvent, ColorFieldState},
+    color_field::{ColorFieldBackgroundPainter, ColorFieldEvent, ColorFieldState},
     color_slider::color_spec::Hsv,
+    color_slider::{
+        ColorSliderBuilder, ColorSliderDomainRenderer, GradientDelegate, primary_slider_value, refresh_color_slider,
+    },
 };
 use gpui_luma_look_radix::{self as radix, Look};
-use xgpui_color::{EncodedRgb, RgbSpace};
+use xgpui_color::RgbSpace;
 
 use crate::theme::ColorVizLookExt;
 
 const CHANNELS: [&str; 3] = ["Red", "Green", "Blue"];
 const INITIAL: [f64; 3] = [0.86, 0.32, 0.58];
+const COLOR_FIELD_HEIGHT: f32 = 190.;
+const CHANNEL_GRADIENT_SEGMENTS: usize = 16;
 
 pub(crate) struct InteractiveSpaces {
     look: Arc<Look>,
+    field_settings: FieldSettings,
+    source_choice: crate::lab_controls::Choice,
     rgb: [f64; 3],
     hsv: Hsv,
     field: Entity<ColorFieldState>,
-    inputs: Vec<TextField>,
-    sliders: Vec<Slider>,
+    channels: [RgbChannelControls; 3],
     saturation: Slider,
+    gpu_painter: Option<ColorFieldBackgroundPainter>,
+    gpu_toggle: Switch,
+    gpu_error: Option<String>,
     _subscriptions: Vec<Subscription>,
 }
 
-/// One physical color, represented in three coordinate systems. No reinterpretation
-/// of RGB triples and no gamut mapping is needed for an sRGB source in Display P3.
-struct Coordinates {
-    p3: [f64; 3],
-    oklch: [f64; 3],
-}
-impl Coordinates {
-    fn new(rgb: [f64; 3]) -> Result<Self, xgpui_color::ColorError> {
-        let source = EncodedRgb::new(RgbSpace::Srgb, rgb)?.decode()?;
-        Ok(Self {
-            p3: source.convert(RgbSpace::DisplayP3)?.encode()?.components(),
-            oklch: source.to_oklab()?.to_oklch()?.components(),
+fn rgb_slider_delegate(rgb: [f64; 3], space: RgbSpace, channel: usize) -> Arc<GradientDelegate> {
+    let colors = (0..=CHANNEL_GRADIENT_SEGMENTS)
+        .map(|step| {
+            let mut sample = rgb;
+            sample[channel] = step as f64 / CHANNEL_GRADIENT_SEGMENTS as f64;
+            let color = source_field::preview(sample, space).unwrap_or_else(|_| rgba(sample));
+            gpui_luma::color::ColorValue::srgb(color.r, color.g, color.b, 1.)
         })
-    }
+        .collect();
+    Arc::new(GradientDelegate::from_colors(colors).expect("finite RGB channel samples form a valid gradient"))
 }
 
-fn rgba(rgb: [f64; 3]) -> Rgba {
-    Rgba { r: rgb[0] as f32, g: rgb[1] as f32, b: rgb[2] as f32, a: 1. }
+struct RgbChannelControls {
+    input: TextField,
+    slider: Slider,
+    track: Arc<ColorSliderDomainRenderer>,
 }
-fn hex(rgb: [f64; 3]) -> String {
-    let [r, g, b] = rgb.map(|value| (value.clamp(0., 1.) * 255.).round() as u8);
-    format!("#{r:02X}{g:02X}{b:02X}")
+
+fn parse_channel(text: &str) -> Option<f64> {
+    text.trim().parse::<f64>().ok().filter(|value| value.is_finite() && (0. ..=1.).contains(value))
+}
+
+impl RgbChannelControls {
+    fn new(index: usize, look: &Look, cx: &mut Context<InteractiveSpaces>) -> (Self, Subscription) {
+        let input = radix::TextField::new(format!("interactive-spaces-input-{index}"))
+            .look(look)
+            .surface()
+            .size(radix::TextFieldSize::Two)
+            .placeholder(format!("{} 0–1", CHANNELS[index]))
+            .value(format!("{:.3}", INITIAL[index]))
+            .full_width(true)
+            .select_all_on_tab_focus(true)
+            .validator(Arc::new(|text| parse_channel(text).is_some()))
+            .on_value_changed(cx, move |page, text, cx| {
+                if let Some(value) = parse_channel(text) {
+                    page.set_channel(index, value, Some(index), cx);
+                }
+            })
+            .on_focus_changed(cx, move |page, focused, cx| {
+                if !focused {
+                    page.sync_input(index, cx);
+                }
+            })
+            .on_submit(cx, move |page, _, cx| page.sync_input(index, cx))
+            .spawn(cx);
+        let builder = ColorSliderBuilder::new(
+            format!("interactive-spaces-slider-{index}"),
+            INITIAL[index] as f32,
+            rgb_slider_delegate(INITIAL, RgbSpace::Srgb, index),
+        )
+        .horizontal()
+        .range(0. ..1.)
+        .step(0.001)
+        .size(gpui_luma::theme::ControlSize::Sm)
+        .thumb_small();
+        let track = builder.domain_renderer();
+        let slider = builder.spawn(cx);
+        let subscription = cx.subscribe(&slider, move |page, _, event, cx| {
+            if let Some(value) = primary_slider_value(event) {
+                page.set_channel(index, value as f64, None, cx);
+            }
+        });
+        (Self { input, slider, track }, subscription)
+    }
+
+    fn refresh_track(&self, rgb: [f64; 3], space: RgbSpace, index: usize, cx: &mut App) {
+        self.track.set_delegate(rgb_slider_delegate(rgb, space, index));
+        refresh_color_slider(&self.slider, cx);
+    }
 }
 
 impl InteractiveSpaces {
     pub(crate) fn new(look: Arc<Look>, cx: &mut Context<Self>) -> Self {
+        let field_settings = FieldSettings::new(0);
         let hsv = Hsv::from_rgba(rgba(INITIAL));
+        let (gpu_painter, gpu_error) = match super::hv_field_shader::painter(field_settings.clone()) {
+            Ok(painter) => (Some(painter), None),
+            Err(error) => (None, Some(error.to_string())),
+        };
         let field = cx.new(|_| {
-            ColorFieldState::hue_value("interactive-spaces-field", hsv, 16.)
+            let field = ColorFieldState::hue_saturation_lightness("interactive-spaces-field", hsv, 16.)
+                .with_model(field_settings.model())
                 .raster_image()
-                .rounded(px(6.))
-                .inside_field()
+                .rounded(px(0.))
+                .no_border()
+                .inside_field();
+            if let Some(painter) = &gpu_painter {
+                field.background_painter(painter.clone())
+            } else {
+                field
+            }
         });
         let subscription = cx.subscribe(&field, |this: &mut Self, _, event, cx| {
             if let ColorFieldEvent::Change(hsv) | ColorFieldEvent::Release(hsv) = event {
-                this.hsv = *hsv;
-                let color: Rgba = hsv.to_hsla_ext().into();
-                this.rgb = [color.r as f64, color.g as f64, color.b as f64];
-                this.sync_controls(None, cx);
-                cx.notify();
+                this.accept_hsv(*hsv, cx);
             }
         });
-        let inputs = CHANNELS
-            .iter()
-            .enumerate()
-            .map(|(index, channel)| {
-                radix::TextField::new(format!("interactive-spaces-input-{index}"))
-                    .look(&look)
-                    .surface()
-                    .size(radix::TextFieldSize::Two)
-                    .placeholder(format!("{channel} 0–1"))
-                    .value(format!("{:.3}", INITIAL[index]))
-                    .full_width(true)
-                    .select_all_on_tab_focus(true)
-                    .validator(Arc::new(|text| {
-                        text.trim().parse::<f64>().is_ok_and(|v| v.is_finite() && (0. ..=1.).contains(&v))
-                    }))
-                    .on_value_changed(cx, move |this: &mut Self, value, cx| {
-                        // Preserve intermediate edits, including an empty field. Only
-                        // finite, bounded values enter the shared color state.
-                        if let Ok(value) = value.trim().parse::<f64>()
-                            && value.is_finite()
-                            && (0. ..=1.).contains(&value)
-                        {
-                            this.set_channel(index, value, Some(index), cx);
-                        }
-                    })
-                    .on_focus_changed(cx, move |this: &mut Self, focused, cx| {
-                        if !focused {
-                            this.sync_input(index, cx);
-                        }
-                    })
-                    .on_submit(cx, move |this: &mut Self, _, cx| this.sync_input(index, cx))
-                    .spawn(cx)
-            })
-            .collect();
-        let sliders = (0..3)
-            .map(|index| {
-                radix::Slider::new(format!("interactive-spaces-slider-{index}"))
-                    .look(&look)
-                    .size(radix::SliderSize::One)
-                    .range(0. ..1.)
-                    .step(0.001)
-                    .value(INITIAL[index])
-                    .on_value_changed(cx, move |this: &mut Self, _, value, cx| {
-                        this.set_channel(index, value as f64, None, cx);
-                    })
-                    .spawn(cx)
-            })
-            .collect();
+        let mut subscriptions = vec![subscription];
+        let channels = std::array::from_fn(|index| {
+            let (controls, subscription) = RgbChannelControls::new(index, &look, cx);
+            subscriptions.push(subscription);
+            controls
+        });
         let saturation = radix::Slider::new("interactive-spaces-saturation")
             .look(&look)
             .size(radix::SliderSize::One)
@@ -126,14 +155,59 @@ impl InteractiveSpaces {
             .value(hsv.s as f64)
             .on_value_changed(cx, |this: &mut Self, _, value, cx| {
                 this.hsv.s = value;
-                let color: Rgba = this.hsv.to_hsla_ext().into();
-                this.rgb = [color.r as f64, color.g as f64, color.b as f64];
                 this.field.update(cx, |field, cx| field.set_hsv(this.hsv, cx));
-                this.sync_controls(None, cx);
+                this.accept_hsv(this.hsv, cx);
+            })
+            .spawn(cx);
+        let gpu_toggle = radix::Switch::new("interactive-spaces-gpu")
+            .look(&look)
+            .label("GPU field")
+            .checked(gpu_painter.is_some())
+            .enabled(gpu_painter.is_some())
+            .on_value_changed(cx, |this: &mut Self, on, cx| {
+                let painter = if on { this.gpu_painter.clone() } else { None };
+                this.field.update(cx, |field, cx| field.set_background_painter(painter, cx));
                 cx.notify();
             })
             .spawn(cx);
-        Self { look, rgb: INITIAL, hsv, field, inputs, sliders, saturation, _subscriptions: vec![subscription] }
+        let source_choice = crate::lab_controls::Choice::new(
+            "interactive-spaces-source",
+            "Source space",
+            &look,
+            crate::lab_controls::labels(&NAMES),
+            0,
+            cx,
+            |this: &mut Self, index, cx| this.set_source(index, cx),
+        );
+        Self {
+            look,
+            field_settings,
+            source_choice,
+            rgb: INITIAL,
+            hsv,
+            field,
+            channels,
+            saturation,
+            gpu_painter,
+            gpu_toggle,
+            gpu_error,
+            _subscriptions: subscriptions,
+        }
+    }
+
+    fn set_source(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.field_settings.set_source(index);
+        self.refresh_color_tracks(cx);
+        self.field.update(cx, |field, cx| field.set_model(self.field_settings.model(), cx));
+        cx.notify();
+    }
+
+    fn accept_hsv(&mut self, hsv: Hsv, cx: &mut Context<Self>) {
+        self.hsv = hsv;
+        let color: Rgba = hsv.to_hsla_ext().into();
+        self.rgb = [color.r as f64, color.g as f64, color.b as f64];
+        self.sync_controls(None, cx);
+        cx.notify();
     }
 
     fn set_channel(&mut self, index: usize, value: f64, editing: Option<usize>, cx: &mut Context<Self>) {
@@ -150,7 +224,9 @@ impl InteractiveSpaces {
     }
 
     fn sync_input(&self, index: usize, cx: &mut Context<Self>) {
-        self.inputs[index].update(cx, |input, cx| input.set_value(format!("{:.3}", self.rgb[index]), cx));
+        self.channels[index]
+            .input
+            .update(cx, |input, cx| input.set_value(format!("{:.3}", self.rgb[index]), cx));
     }
 
     fn sync_controls(&self, editing: Option<usize>, cx: &mut Context<Self>) {
@@ -159,15 +235,20 @@ impl InteractiveSpaces {
             if editing != Some(index) {
                 self.sync_input(index, cx);
             }
-            self.sliders[index].update(cx, |slider, cx| slider.set_value(self.rgb[index] as f32, cx));
+            self.channels[index].slider.update(cx, |slider, cx| slider.set_value(self.rgb[index] as f32, cx));
+            self.channels[index].refresh_track(self.rgb, self.field_settings.source_space(), index, cx);
+        }
+    }
+
+    fn refresh_color_tracks(&self, cx: &mut App) {
+        for (index, channel) in self.channels.iter().enumerate() {
+            channel.refresh_track(self.rgb, self.field_settings.source_space(), index, cx);
         }
     }
 
     fn panel(&self) -> Div {
         let chrome = self.look.chrome();
-        div()
-            .flex()
-            .flex_col()
+        vstack! {}
             .gap_3()
             .p_4()
             .rounded_lg()
@@ -187,6 +268,7 @@ impl InteractiveSpaces {
         labels: [&str; 3],
         values: [String; 3],
         notation: String,
+        preview: Rgba,
     ) -> Div {
         self.panel()
             .flex_1()
@@ -195,16 +277,98 @@ impl InteractiveSpaces {
             .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(title))
             .child(self.caption(description))
             .child(
-                div()
-                    .flex()
+                hstack! {}
                     .gap_4()
                     .items_center()
-                    .child(div().flex_1().min_w(px(70.)).h(px(94.)).rounded_md().bg(rgba(self.rgb)))
-                    .child(div().w(px(100.)).flex().flex_col().gap_2().child(self.caption(notation)).children(
+                    .child(div().flex_1().min_w(px(70.)).h(px(94.)).rounded_md().bg(preview))
+                    .child(vstack! {}.w(px(100.)).gap_2().child(self.caption(notation)).children(
                         labels.into_iter().zip(values).map(|(label, value)| {
-                            div().flex().justify_between().text_sm().child(label.to_owned()).child(value)
+                            hstack! {}.justify_between().text_sm().child(label.to_owned()).child(value)
                         }),
                     )),
+            )
+    }
+}
+
+impl InteractiveSpaces {
+    fn render_header(&self) -> Div {
+        vstack! {
+            div().text_3xl().font_weight(FontWeight::SEMIBOLD).child("Interactive Color Spaces"),
+            self.caption("Explore color models and their representations"),
+        }
+        .gap_2()
+    }
+
+    fn render_field(&self) -> Div {
+        let settings = self.field_settings.clone();
+        let field = self.field.clone();
+        div()
+            .debug_selector(|| "interactive-spaces-field-bounds".into())
+            .w_full()
+            .h(px(COLOR_FIELD_HEIGHT))
+            .flex_shrink_0()
+            .on_prepaint(move |bounds, _, cx| {
+                if settings.resize(bounds.size.width.as_f32()) {
+                    field.update(cx, |field, cx| field.set_model(settings.model(), cx));
+                }
+            })
+            .child(self.field.clone())
+    }
+
+    fn render_field_controls(&self) -> Div {
+        hstack! {
+            self.source_choice.clone(),
+            self.gpu_toggle.clone(),
+            self.caption("Saturation"),
+            div().w(px(200.)).child(self.saturation.clone()),
+            self.caption("Use arrow keys for precise adjustments"),
+        }
+        .flex_wrap()
+        .items_center()
+        .gap_3()
+    }
+
+    fn render_comparisons(&self, coordinates: &Coordinates) -> Div {
+        hstack! {
+            self.card("sRGB", "Standard RGB for web and general use", ["R", "G", "B"],
+                coordinates.srgb.map(|value| format!("{value:.3}")), "Encoded sRGB".into(), coordinates.preview),
+            self.card("Display P3", "Wide gamut for modern displays", ["R", "G", "B"],
+                coordinates.p3.map(|value| format!("{value:.3}")), "Encoded P3".into(), coordinates.preview),
+            self.card("OKLCH", "Perceptual color space", ["L", "C", "H"], [
+                format!("{:.3}", coordinates.oklch[0]),
+                format!("{:.3}", coordinates.oklch[1]),
+                format!("{:.1}°", coordinates.oklch[2]),
+            ], "D65".into(), coordinates.preview),
+        }
+        .flex_wrap()
+        .gap_4()
+    }
+
+    fn render_parameters(&self) -> Div {
+        self.panel()
+            .flex_grow(2.)
+            .flex_basis(px(440.))
+            .min_w(px(240.))
+            .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child("Color parameters"))
+            .child(self.caption(format!("Adjust encoded {} values (0–1)", NAMES[self.field_settings.source_index()])))
+            .child(hstack! {}.flex_wrap().gap_4().children(self.channels.iter().enumerate().map(|(index, channel)| {
+                vstack! { CHANNELS[index], channel.input.clone(), channel.slider.clone() }
+                    .flex_1()
+                    .min_w(px(100.))
+                    .gap_2()
+            })))
+    }
+
+    fn render_preview(&self, preview: Rgba) -> Div {
+        self.panel()
+            .flex_1()
+            .flex_basis(px(265.))
+            .min_w(px(225.))
+            .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child("Color preview"))
+            .child(self.caption("The selected color"))
+            .child(div().w_full().h(px(80.)).rounded_md().bg(preview))
+            .child(
+                self.caption(format!("sRGB preview {}", hex([preview.r as f64, preview.g as f64, preview.b as f64]))),
             )
     }
 }
@@ -212,70 +376,41 @@ impl InteractiveSpaces {
 impl Render for InteractiveSpaces {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let chrome = self.look.chrome();
-        let comparison = match Coordinates::new(self.rgb) {
-            Ok(coordinates) => div()
-                .flex()
-                .flex_wrap()
-                .gap_4()
-                .child(self.card(
-                    "sRGB",
-                    "Standard RGB for web and general use",
-                    ["R", "G", "B"],
-                    self.rgb.map(|v| format!("{v:.3}")),
-                    hex(self.rgb),
-                ))
-                .child(self.card(
-                    "Display P3",
-                    "Wide gamut for modern displays",
-                    ["R", "G", "B"],
-                    coordinates.p3.map(|v| format!("{v:.3}")),
-                    "Encoded P3".into(),
-                ))
-                .child(self.card(
-                    "OKLCH",
-                    "Perceptual color space",
-                    ["L", "C", "H"],
-                    [
-                        format!("{:.3}", coordinates.oklch[0]),
-                        format!("{:.3}", coordinates.oklch[1]),
-                        format!("{:.1}°", coordinates.oklch[2]),
-                    ],
-                    "D65".into(),
-                )),
+        let coordinates = Coordinates::new(self.rgb, self.field_settings.source_space());
+        let preview = coordinates.as_ref().map(|color| color.preview).unwrap_or_else(|_| rgba(self.rgb));
+        let comparison = match coordinates {
+            Ok(coordinates) => self.render_comparisons(&coordinates),
             Err(error) => div().child(format!("Color conversion unavailable: {error}")),
         };
-        div().id("interactive-color-spaces").size_full().overflow_y_scroll()
-            .bg(chrome.content_background).text_color(chrome.body_text)
-            .child(div().w_full().max_w(px(1240.)).mx_auto().p_6().flex().flex_col().gap_5()
-                .child(self.caption("xgpui-color  /  Interactive Color Spaces"))
-                .child(div().flex().flex_col().gap_2()
-                    .child(div().text_3xl().font_weight(FontWeight::SEMIBOLD).child("Interactive Color Spaces"))
-                    .child(self.caption("Explore color models and their representations")))
-                .child(self.panel().gap_4().p_5()
-                    .child(div().flex().flex_col().gap_1()
-                        .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child("Color space comparison"))
-                        .child(self.caption("One selected color, represented in sRGB, Display P3, and OKLCH")))
-                    .child(div().debug_selector(|| "interactive-spaces-field-bounds".into()).w_full().h(px(190.)).flex_shrink_0().child(self.field.clone()))
-                    .child(self.caption(format!("Drag to change hue and brightness · saturation {:.0}%", self.hsv.s * 100.)))
-                    .child(div().flex().flex_wrap().items_center().gap_3()
-                        .child(self.caption("Saturation"))
-                        .child(div().w(px(200.)).child(self.saturation.clone()))
-                        .child(self.caption("Use arrow keys for precise adjustments")))
-                    .child(comparison)
-                    .child(div().flex().flex_wrap().gap_4()
-                        .child(self.panel().flex_grow(2.).flex_basis(px(440.)).min_w(px(240.))
-                            .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child("Color parameters"))
-                            .child(self.caption("Adjust the color using encoded sRGB values (0–1)"))
-                            .child(div().flex().flex_wrap().gap_4().children((0..3).map(|index| {
-                                div().flex_1().min_w(px(100.)).flex().flex_col().gap_2()
-                                    .child(CHANNELS[index]).child(self.inputs[index].clone()).child(self.sliders[index].clone())
-                            }))))
-                        .child(self.panel().flex_1().flex_basis(px(265.)).min_w(px(225.))
-                            .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child("Color preview"))
-                            .child(self.caption("The selected color"))
-                            .child(div().w_full().h(px(80.)).rounded_md().bg(rgba(self.rgb)))
-                            .child(self.caption(hex(self.rgb)))))
-                    .child(self.caption("The swatches show the same color. Display P3 coordinates are converted from sRGB; OKLCH describes lightness, chroma, and hue."))))
+        let content = self.panel().gap_4().p_5()
+            .child(vstack! {
+                div().text_lg().font_weight(FontWeight::SEMIBOLD).child("Color space comparison"),
+                self.caption("One selected color, represented in sRGB, Display P3, and OKLCH"),
+            }.gap_1())
+            .child(self.render_field())
+            .child(self.caption(format!("Hue across · white → hue → black down · saturation {:.0}%", self.hsv.s * 100.)))
+            .child(self.render_field_controls())
+            .when_some(self.gpu_error.as_ref(), |view, error| view.child(self.caption(format!("CPU field · shader unavailable: {error}"))))
+            .child(comparison)
+            .child(hstack! { self.render_parameters(), self.render_preview(preview) }.flex_wrap().gap_4())
+            .child(self.caption("Source space changes how the RGB values are interpreted. All swatches are sRGB previews with out-of-gamut channels clipped for display; monitor settings stay unchanged."));
+
+        div()
+            .id("interactive-color-spaces")
+            .size_full()
+            .overflow_y_scroll()
+            .bg(chrome.content_background)
+            .text_color(chrome.body_text)
+            .child(
+                vstack! {
+                    self.caption("xgpui-color  /  Interactive Color Spaces"), self.render_header(), content,
+                }
+                .w_full()
+                .max_w(px(1240.))
+                .mx_auto()
+                .p_6()
+                .gap_5(),
+            )
     }
 }
 
@@ -289,7 +424,7 @@ mod tests {
     #[test]
     fn comparison_coordinates_preserve_the_selected_physical_color() {
         for rgb in [INITIAL, [0., 0., 0.], [1., 1., 1.], [1., 0., 0.], [0.12, 0.45, 0.91]] {
-            let coordinates = Coordinates::new(rgb).unwrap();
+            let coordinates = Coordinates::new(rgb, RgbSpace::Srgb).unwrap();
             let p3_roundtrip = EncodedRgb::new(RgbSpace::DisplayP3, coordinates.p3)
                 .unwrap()
                 .decode()
@@ -314,7 +449,11 @@ mod tests {
                 assert!((oklch - source).abs() < 1e-5);
             }
         }
-        assert_ne!(Coordinates::new(INITIAL).unwrap().p3, INITIAL, "P3 must convert rather than reinterpret RGB");
+        assert_ne!(
+            Coordinates::new(INITIAL, RgbSpace::Srgb).unwrap().p3,
+            INITIAL,
+            "P3 must convert rather than reinterpret RGB"
+        );
     }
 
     #[test]
@@ -323,7 +462,7 @@ mod tests {
         app.update(|cx| gpui_luma::init(cx).unwrap());
         let (page, cx) = app.add_window_view(|_, cx| InteractiveSpaces::new(crate::theme::default_look(), cx));
         cx.run_until_parked();
-        let input = cx.update(|_, cx| page.read(cx).inputs[0].clone());
+        let input = cx.update(|_, cx| page.read(cx).channels[0].input.clone());
         for (text, expected) in [("0.125", 0.125), ("NaN", 0.125), ("1.2", 0.125), ("", 0.125)] {
             input.update(cx, |input, cx| {
                 input.set_value(text, cx);
@@ -335,13 +474,13 @@ mod tests {
         input.update(cx, |_, cx| cx.emit(TextFieldEvent::FocusChanged { focused: false }));
         cx.run_until_parked();
         cx.update(|_, cx| assert_eq!(input.read(cx).value(), "0.125"));
-        let slider = cx.update(|_, cx| page.read(cx).sliders[1].clone());
+        let slider = cx.update(|_, cx| page.read(cx).channels[1].slider.clone());
         slider.update(cx, |slider, cx| slider.set_thumb_position(slider.primary_thumb_id(), 0.7, cx));
         cx.run_until_parked();
         cx.update(|_, cx| {
             let page = page.read(cx);
             assert!((page.rgb[1] - 0.7).abs() < 0.001);
-            assert_eq!(page.inputs[1].read(cx).value(), "0.700");
+            assert_eq!(page.channels[1].input.read(cx).value(), "0.700");
         });
         let bounds = cx.debug_bounds("interactive-spaces-field-bounds").unwrap();
         assert!(bounds.size.width > px(400.));
@@ -354,9 +493,10 @@ mod tests {
         cx.update(|_, cx| {
             let page = page.read(cx);
             assert!((page.hsv.h - 90.).abs() < 10.);
-            assert!((page.hsv.v - 0.75).abs() < 0.1);
-            for (index, input) in page.inputs.iter().enumerate() {
-                assert_eq!(input.read(cx).value(), format!("{:.3}", page.rgb[index]));
+            assert_eq!(page.hsv.v, 1.);
+            assert!((page.hsv.s - 0.5).abs() < 0.05);
+            for (index, channel) in page.channels.iter().enumerate() {
+                assert_eq!(channel.input.read(cx).value(), format!("{:.3}", page.rgb[index]));
             }
         });
         let saturation = cx.update(|_, cx| page.read(cx).saturation.clone());
@@ -366,5 +506,115 @@ mod tests {
             let rgb = page.read(cx).rgb;
             assert!((rgb[0] - rgb[1]).abs() < 1e-6 && (rgb[1] - rgb[2]).abs() < 1e-6);
         });
+    }
+    #[test]
+    fn switching_cpu_gpu_retains_color_and_luma_keyboard_and_drag_behavior() {
+        use gpui::{KeyDownEvent, KeyUpEvent, Keystroke, MouseButton};
+        use gpui_luma::controls::switch::SwitchEvent;
+        let mut app = TestAppContext::single();
+        app.update(|cx| gpui_luma::init(cx).unwrap());
+        let (page, cx) = app.add_window_view(|window, cx| {
+            window.activate_window();
+            InteractiveSpaces::new(crate::theme::default_look(), cx)
+        });
+        cx.run_until_parked();
+        let toggle = cx.update(|_, cx| {
+            let page = page.read(cx);
+            assert!(page.gpu_painter.is_some());
+            assert!(*page.gpu_toggle.read(cx).data());
+            page.gpu_toggle.clone()
+        });
+        for on in [false, true] {
+            let before = cx.update(|_, cx| page.read(cx).rgb);
+            toggle.update(cx, |toggle, cx| {
+                toggle.set_data(on, cx);
+                cx.emit(SwitchEvent::Change { on });
+            });
+            cx.run_until_parked();
+            cx.update(|_, cx| assert_eq!(page.read(cx).rgb, before));
+            let bounds = cx.debug_bounds("interactive-spaces-field-bounds").unwrap();
+            cx.simulate_mouse_down(bounds.center(), MouseButton::Left, Default::default());
+            let moved = point(bounds.left() + bounds.size.width * 0.35, bounds.top() + bounds.size.height * 0.4);
+            cx.simulate_mouse_move(moved, MouseButton::Left, Default::default());
+            cx.simulate_mouse_up(moved, MouseButton::Left, Default::default());
+            cx.run_until_parked();
+            let hue = cx.update(|_, cx| page.read(cx).hsv.h);
+            assert!((hue - 126.).abs() < 10.);
+            let keystroke = Keystroke::parse("right").unwrap();
+            cx.simulate_event(KeyDownEvent {
+                keystroke: keystroke.clone(),
+                is_held: false,
+                prefer_character_input: false,
+            });
+            cx.simulate_event(KeyUpEvent { keystroke });
+            cx.run_until_parked();
+            cx.update(|_, cx| assert!((page.read(cx).hsv.h - hue - 3.6).abs() < 0.01));
+        }
+    }
+    #[test]
+    fn source_selector_reinterprets_components_without_changing_monitor_mode_or_inputs() {
+        use crate::color_demos::source_field::{self, SPACES};
+        let mut app = TestAppContext::single();
+        app.update(|cx| gpui_luma::init(cx).unwrap());
+        let (page, cx) = app.add_window_view(|_, cx| InteractiveSpaces::new(crate::theme::default_look(), cx));
+        cx.run_until_parked();
+        let mode = cx.update(|window, _| window.color_status().effective());
+        let selector = cx.update(|_, cx| page.read(cx).source_choice.clone());
+        let mut colors = Vec::new();
+        for (index, space) in SPACES.into_iter().enumerate() {
+            cx.update(|_, cx| selector.select(index, cx));
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                assert_eq!(window.color_status().effective(), mode);
+                let page = page.read(cx);
+                assert_eq!(page.rgb, INITIAL);
+                assert_eq!(page.channels[0].input.read(cx).value(), "0.860");
+                let coordinates = Coordinates::new(page.rgb, space).unwrap();
+                colors.push(coordinates.preview);
+                let field = page.field.read(cx);
+                let thumb: gpui::Rgba = field.model.thumb_color(&page.hsv).into();
+                let expected = source_field::preview(page.rgb, space).unwrap();
+                for channel in 0..3 {
+                    for endpoint in [0., 1.] {
+                        let mut sample = page.rgb;
+                        sample[channel] = endpoint;
+                        let expected = source_field::preview(sample, space).unwrap();
+                        let actual: gpui::Rgba =
+                            gpui_luma::controls::slider::DomainTrackRenderer::get_color_at_position(
+                                page.channels[channel].track.as_ref(),
+                                endpoint as f32,
+                            )
+                            .unwrap()
+                            .into();
+                        for (actual, expected) in
+                            [actual.r, actual.g, actual.b].into_iter().zip([expected.r, expected.g, expected.b])
+                        {
+                            assert!((actual - expected).abs() < 1e-5, "source-aware RGB track endpoint");
+                        }
+                    }
+                }
+
+                for (actual, expected) in
+                    [thumb.r, thumb.g, thumb.b].into_iter().zip([expected.r, expected.g, expected.b])
+                {
+                    assert!((actual - expected).abs() < 1e-5);
+                }
+                // Extended sRGB coordinates must retain the source color through conversion.
+                let roundtrip = EncodedRgb::new(RgbSpace::Srgb, coordinates.srgb)
+                    .unwrap()
+                    .decode()
+                    .unwrap()
+                    .convert(space)
+                    .unwrap()
+                    .encode()
+                    .unwrap()
+                    .components();
+                for (actual, expected) in roundtrip.into_iter().zip(INITIAL) {
+                    assert!((actual - expected).abs() < 1e-5);
+                }
+            });
+        }
+        assert_ne!(colors[0], colors[1]);
+        assert_ne!(colors[1], colors[2]);
     }
 }
