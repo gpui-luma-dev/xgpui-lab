@@ -37,7 +37,6 @@ pub(crate) struct InteractiveSpaces {
     hsv: Hsv,
     field: Entity<ColorFieldState>,
     channels: [RgbChannelControls; 3],
-    saturation: Slider,
     gpu_painter: Option<ColorFieldBackgroundPainter>,
     gpu_toggle: Switch,
     gpu_error: Option<String>,
@@ -147,18 +146,6 @@ impl InteractiveSpaces {
             subscriptions.push(subscription);
             controls
         });
-        let saturation = radix::Slider::new("interactive-spaces-saturation")
-            .look(&look)
-            .size(radix::SliderSize::One)
-            .range(0. ..1.)
-            .step(0.001)
-            .value(hsv.s as f64)
-            .on_value_changed(cx, |this: &mut Self, _, value, cx| {
-                this.hsv.s = value;
-                this.field.update(cx, |field, cx| field.set_hsv(this.hsv, cx));
-                this.accept_hsv(this.hsv, cx);
-            })
-            .spawn(cx);
         let gpu_toggle = radix::Switch::new("interactive-spaces-gpu")
             .look(&look)
             .label("GPU field")
@@ -187,7 +174,6 @@ impl InteractiveSpaces {
             hsv,
             field,
             channels,
-            saturation,
             gpu_painter,
             gpu_toggle,
             gpu_error,
@@ -230,7 +216,6 @@ impl InteractiveSpaces {
     }
 
     fn sync_controls(&self, editing: Option<usize>, cx: &mut Context<Self>) {
-        self.saturation.update(cx, |slider, cx| slider.set_value(self.hsv.s, cx));
         for index in 0..3 {
             if editing != Some(index) {
                 self.sync_input(index, cx);
@@ -327,8 +312,6 @@ impl InteractiveSpaces {
         hstack! {
             self.source_choice.clone(),
             self.gpu_toggle.clone(),
-            self.caption("Saturation"),
-            div().w(px(200.)).child(self.saturation.clone()),
             self.caption("Use arrow keys for precise adjustments"),
         }
         .flex_wrap()
@@ -521,13 +504,7 @@ mod tests {
                 assert_eq!(channel.input.read(cx).value(), format!("{:.3}", page.rgb[index]));
             }
         });
-        let saturation = cx.update(|_, cx| page.read(cx).saturation.clone());
-        saturation.update(cx, |slider, cx| slider.set_thumb_position(slider.primary_thumb_id(), 0., cx));
-        cx.run_until_parked();
-        cx.update(|_, cx| {
-            let rgb = page.read(cx).rgb;
-            assert!((rgb[0] - rgb[1]).abs() < 1e-6 && (rgb[1] - rgb[2]).abs() < 1e-6);
-        });
+
     }
     #[test]
     fn switching_cpu_gpu_retains_color_and_luma_keyboard_and_drag_behavior() {
