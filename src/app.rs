@@ -68,6 +68,7 @@ const SECTIONS: &[Section] = &[
         "xgpui-color",
         &[
             ("Color Spaces", "Color Spaces"),
+            ("Interactive Color Spaces", "Interactive Color Spaces"),
             ("Conversions", "Conversions"),
             ("Interpolation", "Interpolation"),
             ("Gamut Mapping", "Gamut Mapping"),
@@ -540,6 +541,7 @@ mod tests {
             (Workspace::Gradients, "mesh"),
             (Workspace::Color, "Gamut Mapping"),
             (Workspace::Color, "Italy Photo Comparison"),
+            (Workspace::Color, "Interactive Color Spaces"),
             (Workspace::Gamut, "Gamut Mapping"),
             (Workspace::Gamut, "Chromaticity & Gamut"),
             (Workspace::Compositions, "picker"),

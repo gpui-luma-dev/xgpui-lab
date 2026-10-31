@@ -6,6 +6,7 @@ use gpui_luma_look_radix::Look;
 /// An extension's navigation and lab content, independent of the original demos.
 pub struct ExtensionPane {
     look: Arc<Look>,
+    interactive_spaces: Option<Entity<crate::color_demos::InteractiveSpaces>>,
     italy: Option<Entity<crate::color_demos::ItalyLab>>,
     chromaticity: Option<Entity<crate::color_demos::ChromaticityLab>>,
     active_demo: Option<gpui::AnyView>,
@@ -39,6 +40,12 @@ impl ExtensionPane {
 
     pub(crate) fn activate_page(&mut self, page: &'static str, cx: &mut Context<Self>) {
         self.active_demo = match page {
+            "Interactive Color Spaces" if self.color.is_some() => {
+                let view = self.interactive_spaces.get_or_insert_with(|| {
+                    cx.new(|cx| crate::color_demos::InteractiveSpaces::new(self.look.clone(), cx))
+                });
+                Some(view.clone().into())
+            }
             "Italy Photo Comparison" if self.color.is_some() => {
                 let view = self
                     .italy
@@ -105,6 +112,7 @@ impl ExtensionPane {
         let benchmarks = suite.map(|suite| cx.new(|cx| crate::benchmarks::Page::new(suite, look.clone(), cx)));
         Self {
             look,
+            interactive_spaces: None,
             italy: None,
             chromaticity: None,
             active_demo: None,
@@ -159,6 +167,7 @@ mod tests {
         app.update(|cx| gpui_luma::init(cx).expect("initialize SDK"));
         for (id, lab, existing) in [
             ("xgpui-color-tabs", "Italy Photo Comparison", "Color Spaces"),
+            ("xgpui-color-tabs", "Interactive Color Spaces", "Color Spaces"),
             ("xgpui-gamut-tabs", "Chromaticity & Gamut", "Wide Color Fills"),
         ] {
             let (view, cx) =

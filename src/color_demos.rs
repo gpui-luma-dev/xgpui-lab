@@ -1,9 +1,11 @@
-//! Native ports of xgpui's Italy and chromaticity browser demonstrations.
+//! Native color exploration views and ports of xgpui's color demonstrations.
 mod chromaticity;
 mod chromaticity_model;
 mod chromaticity_shader;
+mod interactive_spaces;
 mod italy;
 mod italy_model;
 
 pub(crate) use chromaticity::ChromaticityLab;
+pub(crate) use interactive_spaces::InteractiveSpaces;
 pub(crate) use italy::ItalyLab;
