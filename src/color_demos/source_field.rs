@@ -31,6 +31,7 @@ pub(super) struct Coordinates {
     pub preview: Rgba,
     pub p3: [f64; 3],
     pub oklch: [f64; 3],
+    pub rec2020: [f64; 3],
 }
 impl Coordinates {
     pub fn new(rgb: [f64; 3], space: RgbSpace) -> Result<Self, xgpui_color::ColorError> {
@@ -40,6 +41,7 @@ impl Coordinates {
             preview: preview_linear(source)?,
             p3: source.convert(RgbSpace::DisplayP3)?.encode()?.components(),
             oklch: source.to_oklab()?.to_oklch()?.components(),
+            rec2020: source.convert(RgbSpace::Rec2020)?.encode()?.components(),
         })
     }
 }

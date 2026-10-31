@@ -22,7 +22,7 @@ use gpui_luma_color::{
 use gpui_luma_look_radix::{self as radix, Look};
 use xgpui_color::RgbSpace;
 
-use crate::theme::ColorVizLookExt;
+use crate::theme::{ColorVizLookExt, TextSize, TypographyExt};
 
 const CHANNELS: [&str; 3] = ["Red", "Green", "Blue"];
 const INITIAL: [f64; 3] = [0.86, 0.32, 0.58];
@@ -264,29 +264,37 @@ impl InteractiveSpaces {
     fn card(
         &self,
         title: &'static str,
-        description: &'static str,
         labels: [&str; 3],
         values: [String; 3],
         notation: String,
         preview: Rgba,
     ) -> Div {
+        let title_style = self.look.typography_scale(TextSize::Base);
+        let detail_style = gpui_luma::theme::LumaTextStyle { size: 12., ..self.look.typography_scale(TextSize::Sm) };
         self.panel()
+            .p_3()
+            .gap_3()
             .flex_1()
-            .min_w(px(225.))
-            .flex_basis(px(265.))
-            .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(title))
-            .child(self.caption(description))
+            .min_w(px(200.))
+            .flex_basis(px(200.))
             .child(
-                hstack! {}
-                    .gap_4()
-                    .items_center()
-                    .child(div().flex_1().min_w(px(70.)).h(px(94.)).rounded_md().bg(preview))
-                    .child(vstack! {}.w(px(100.)).gap_2().child(self.caption(notation)).children(
-                        labels.into_iter().zip(values).map(|(label, value)| {
-                            hstack! {}.justify_between().text_sm().child(label.to_owned()).child(value)
-                        }),
-                    )),
+                hstack! {
+                    div().size(px(28.)).flex_shrink_0().rounded_sm().bg(preview),
+                    vstack! {
+                        div().typography_style(title_style).font_weight(FontWeight::SEMIBOLD).child(title),
+                        self.caption(notation).typography_style(detail_style),
+                    },
+                }
+                .items_center()
+                .gap_3(),
             )
+            .child(hstack! {}.gap_2().children(labels.into_iter().zip(values).map(|(label, value)| {
+                hstack! {
+                    self.caption(label.to_owned()).typography_style(detail_style),
+                    div().typography_style(detail_style).child(value),
+                }
+                .gap_1()
+            })))
     }
 }
 
@@ -330,15 +338,17 @@ impl InteractiveSpaces {
 
     fn render_comparisons(&self, coordinates: &Coordinates) -> Div {
         hstack! {
-            self.card("sRGB", "Standard RGB for web and general use", ["R", "G", "B"],
+            self.card("sRGB", ["R", "G", "B"],
                 coordinates.srgb.map(|value| format!("{value:.3}")), "Encoded sRGB".into(), coordinates.preview),
-            self.card("Display P3", "Wide gamut for modern displays", ["R", "G", "B"],
+            self.card("Display P3", ["R", "G", "B"],
                 coordinates.p3.map(|value| format!("{value:.3}")), "Encoded P3".into(), coordinates.preview),
-            self.card("OKLCH", "Perceptual color space", ["L", "C", "H"], [
+            self.card("OKLCH", ["L", "C", "H"], [
                 format!("{:.3}", coordinates.oklch[0]),
                 format!("{:.3}", coordinates.oklch[1]),
                 format!("{:.1}°", coordinates.oklch[2]),
             ], "D65".into(), coordinates.preview),
+            self.card("Rec2020", ["R", "G", "B"],
+                coordinates.rec2020.map(|value| format!("{value:.3}")), "Encoded Rec2020".into(), coordinates.preview),
         }
         .flex_wrap()
         .gap_4()
@@ -385,7 +395,7 @@ impl Render for InteractiveSpaces {
         let content = self.panel().gap_4().p_5()
             .child(vstack! {
                 div().text_lg().font_weight(FontWeight::SEMIBOLD).child("Color space comparison"),
-                self.caption("One selected color, represented in sRGB, Display P3, and OKLCH"),
+                self.caption("One selected color, represented in sRGB, Display P3, OKLCH, and Rec2020"),
             }.gap_1())
             .child(self.render_field())
             .child(self.caption(format!("Hue across · white → hue → black down · saturation {:.0}%", self.hsv.s * 100.)))
@@ -434,6 +444,18 @@ mod tests {
                 .encode()
                 .unwrap()
                 .components();
+            let rec2020_roundtrip = EncodedRgb::new(RgbSpace::Rec2020, coordinates.rec2020)
+                .unwrap()
+                .decode()
+                .unwrap()
+                .convert(RgbSpace::Srgb)
+                .unwrap()
+                .encode()
+                .unwrap()
+                .components();
+            for (actual, expected) in rec2020_roundtrip.into_iter().zip(rgb) {
+                assert!((actual - expected).abs() < 1e-5);
+            }
             let [l, c, h] = coordinates.oklch;
             let perceptual_roundtrip = xgpui_color::Oklch::new(l, c, h)
                 .unwrap()
