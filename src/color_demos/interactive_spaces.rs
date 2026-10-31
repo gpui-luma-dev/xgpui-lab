@@ -309,8 +309,16 @@ impl InteractiveSpaces {
     }
 
     fn render_field_controls(&self) -> Div {
+        let label = radix::switch_theme(&self.look).resolve(
+            false,
+            gpui_luma::theme::InteractionState::default(),
+            gpui_luma::theme::ControlSize::Md,
+        );
         hstack! {
-            self.source_choice.clone(),
+            self.source_choice.clone().into_element()
+                .typography_style(label.label_typography)
+                .font_family(label.label_font_family)
+                .text_color(label.label_color),
             self.gpu_toggle.clone(),
             self.caption("Use arrow keys for precise adjustments"),
         }
