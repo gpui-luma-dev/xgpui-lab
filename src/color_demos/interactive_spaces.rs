@@ -375,7 +375,7 @@ impl Render for InteractiveSpaces {
             Ok(coordinates) => self.render_comparisons(&coordinates),
             Err(error) => div().child(format!("Color conversion unavailable: {error}")),
         };
-        let content = self.panel().gap_4().p_5()
+        let content = vstack! {}.gap_4()
             .child(self.render_field())
             .child(self.caption(format!("Hue across · white → hue → black down · saturation {:.0}%", self.hsv.s * 100.)))
             .child(self.render_field_controls())
