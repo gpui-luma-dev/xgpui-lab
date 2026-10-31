@@ -1,6 +1,8 @@
 #![windows_subsystem = "windows"]
 
 mod app;
+mod chromaticity;
+mod color_gamut_page;
 mod lab_controls;
 mod benchmarks;
 

@@ -48,12 +48,30 @@ def prepare(root=ROOT):
         print(f"{name}: {pin['repository']} @ {actual}", flush=True)
 
 
+def align_luma(root=ROOT):
+    """Use the pinned sibling xgpui with Luma's older published dependency declarations."""
+    manifest = root.parent / "gpui-luma/Cargo.toml"
+    text = manifest.read_text()
+    replacements = {
+        'gpui = { package = "xgpui", version = "=1.0.0" }':
+            'gpui = { package = "xgpui", path = "../xgpui/gpui/crates/gpui" }',
+        'package = "xgpui-platform",\n  version = "=1.0.0",':
+            'package = "xgpui-platform",\n  path = "../xgpui/gpui/crates/gpui-platform",',
+    }
+    for old, new in replacements.items():
+        if text.count(old) != 1:
+            raise ValueError("Pinned Luma dependency declaration changed unexpectedly")
+        text = text.replace(old, new)
+    manifest.write_text(text)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["outputs", "prepare"])
     args = parser.parse_args()
     if args.command == "prepare":
         prepare()
+        align_luma()
         return
     values = {f"{name}-{key}": value for name, pin in configuration().items()
               for key, value in pin.items()}

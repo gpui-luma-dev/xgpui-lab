@@ -51,6 +51,8 @@ fn scene(
     scene.finish();
     Ok(scene)
 }
+// Mirrors the scene parameters and adds the renderer under test.
+#[allow(clippy::too_many_arguments)]
 fn render(
     renderer: &mut dyn PlatformHeadlessRenderer,
     programs: &SeaPrograms,
@@ -187,7 +189,9 @@ pub(crate) fn run(output: &std::path::Path, cancel: &std::sync::atomic::AtomicBo
             #[cfg(feature = "grid-wgpu")]
             {
                 let wgpu = render(&mut portable, &programs, p, typed, width, height, false, 1.)?;
-                wgpu.save(output.join(format!("sea-{case}-wgpu-{}.png", if typed { "instanced" } else { "shader-paint" })))?;
+                wgpu.save(
+                    output.join(format!("sea-{case}-wgpu-{}.png", if typed { "instanced" } else { "shader-paint" })),
+                )?;
                 comparisons.push(compare(
                     original,
                     &wgpu,
@@ -199,7 +203,8 @@ pub(crate) fn run(output: &std::path::Path, cancel: &std::sync::atomic::AtomicBo
     // Retained old parameters remain immutable after other time/shape renders.
     let replay = render(native.as_mut(), &programs, SeaInstance::default(), true, 320, 180, false, 1.)?;
     ensure!(replay.as_raw() == first.as_ref().unwrap().as_raw(), "same snapshot must render deterministically");
-    let old_snapshot = native.render_scene_to_image(&retained_shader_paint, size(DevicePixels(320), DevicePixels(180)))?;
+    let old_snapshot =
+        native.render_scene_to_image(&retained_shader_paint, size(DevicePixels(320), DevicePixels(180)))?;
     ensure!(
         old_snapshot.as_raw() == first_shader_paint.as_ref().unwrap().as_raw(),
         "shader paint snapshot changed after parameter edits"
