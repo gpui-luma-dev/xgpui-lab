@@ -1,3 +1,10 @@
+set shell := ["bash", "-cu"]
+set windows-shell := ["bash", "-cu"]
+set positional-arguments
+
+# Fast iteration for the standalone color lab; override with profile=release.
+profile := "dev"
+
 # List available recipes.
 default:
     @just --list
@@ -53,3 +60,11 @@ coverage-report:
 # Build a fresh registry-only consumer without local patches/configuration.
 consumer-audit:
     python3 .github/scripts/audit_consumer.py
+
+# CIE xy/u′v′, color storage inspector and native-wide/sRGB comparisons.
+chromaticity *args:
+    cargo run --profile "{{ profile }}" --bin chromaticity-lab -- "$@"
+
+# Numerical and CIE dataset checks for the standalone color lab.
+chromaticity-test *args:
+    cargo test --bin chromaticity-lab -- "$@"

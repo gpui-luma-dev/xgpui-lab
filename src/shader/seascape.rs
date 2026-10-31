@@ -1,7 +1,7 @@
 //! App-side host for TDM's Seascape. The adapted WGSL retains CC BY-NC-SA 3.0.
 use super::*;
 use xgpui_shader::{
-    experimental,
+    shader_paint,
     instanced::{InstanceField, ShaderInstance},
     painted, WindowShaderExt,
 };
@@ -71,7 +71,7 @@ impl SeaInstance {
     }
 }
 /// Expand only the two marked, constant-bound loops. Each block retains its own scope.
-fn expand_v1(mut source: String) -> String {
+fn expand_shader_paint_loops(mut source: String) -> String {
     for (marker, count) in [("OCTAVES", 5), ("TRACE", 32)] {
         let begin = format!("// BEGIN_{marker}");
         let end = format!("// END_{marker}");
@@ -85,28 +85,28 @@ fn expand_v1(mut source: String) -> String {
     source
 }
 pub(crate) struct SeaPrograms {
-    pub v1: experimental::ShaderProgram,
-    pub v2: ShaderProgram<SeaInstance>,
+    pub shader_paint: shader_paint::ShaderProgram,
+    pub instanced: ShaderProgram<SeaInstance>,
 }
 impl SeaPrograms {
     pub fn new() -> anyhow::Result<Self> {
         let source = include_str!("seascape.wgsl");
         Ok(Self {
-            v2: ShaderProgram::new(&format!(
+            instanced: ShaderProgram::new(&format!(
                 "{source}\nfn shade(i: ShaderInput, p: Parameters) -> vec4<f32> {{ return seascape_color(i.uv, i.size, p); }}"
             ))?,
-            v1: experimental::ShaderProgram::new_v1(&format!(
+            shader_paint: shader_paint::ShaderProgram::new(&format!(
                 "{}\nfn paint(i: PaintInput) -> vec4<f32> {{ return seascape_color(i.uv, i.size, parameters); }}",
-                expand_v1(source.into())
+                expand_shader_paint_loops(source.into())
             ))?,
         })
     }
-    pub fn paint(&self, p: SeaInstance) -> anyhow::Result<experimental::ShaderPaint> {
-        let mut fields = experimental::ShaderParameters::new();
+    pub fn paint(&self, p: SeaInstance) -> anyhow::Result<shader_paint::ShaderPaint> {
+        let mut fields = shader_paint::ShaderParameters::new();
         for (field, value) in SeaInstance::FIELDS.iter().zip(p.values()) {
             fields = fields.float(field.name, value);
         }
-        self.v1.paint(fields)
+        self.shader_paint.paint(fields)
     }
 }
 const CONTROLS: [(&str, f32, f32, f32); 8] = [
@@ -150,7 +150,7 @@ impl SeaPane {
                     .spawn(cx)
             })
             .collect();
-        let buttons = ["Animate / Pause", "Compare v1 / v2", "Reset", "Original · TDM", "CC BY-NC-SA 3.0"]
+        let buttons = ["Animate / Pause", "Compare rendering models", "Reset", "Original · TDM", "CC BY-NC-SA 3.0"]
             .iter()
             .enumerate()
             .map(|(i, label)| {
@@ -210,7 +210,7 @@ impl SeaPane {
     }
     fn preview(&self) -> anyhow::Result<AnyElement> {
         let programs = self.programs.as_ref().map_err(|e| anyhow::anyhow!("{e:#}"))?;
-        let typed = programs.v2.clone();
+        let typed = programs.instanced.clone();
         let p = self.parameters;
         let mut view = div().flex().flex_wrap().gap_4();
         if self.compare {
@@ -218,24 +218,28 @@ impl SeaPane {
                 div()
                     .flex_1()
                     .min_w(px(300.))
-                    .child("v1 · expanded bounded loops")
+                    .child("Shader paint · expanded bounded loops")
                     .child(painted().w_full().h(px(300.)).bg_paint(programs.paint(p)?)),
             );
         }
         Ok(view
             .child(
-                div().flex_1().min_w(px(300.)).child("v2 · native WGSL loops · 32-byte instance").child(
-                    canvas(
-                        |_, _, _| (),
-                        move |bounds, _, window, _| {
-                            if let Err(e) = window.paint_custom_shader(bounds, &typed, p) {
-                                tracing::error!("Seascape: {e:#}");
-                            }
-                        },
-                    )
-                    .w_full()
-                    .h(px(300.)),
-                ),
+                div()
+                    .flex_1()
+                    .min_w(px(300.))
+                    .child("Instanced shader · native WGSL loops · 32-byte instance")
+                    .child(
+                        canvas(
+                            |_, _, _| (),
+                            move |bounds, _, window, _| {
+                                if let Err(e) = window.paint_custom_shader(bounds, &typed, p) {
+                                    tracing::error!("Seascape: {e:#}");
+                                }
+                            },
+                        )
+                        .w_full()
+                        .h(px(300.)),
+                    ),
             )
             .into_any_element())
     }
@@ -271,11 +275,11 @@ mod tests {
         programs.paint(SeaInstance::default()).unwrap();
         assert!(programs.paint(SeaInstance { time: f32::INFINITY, ..Default::default() }).is_err());
         let source = include_str!("seascape.wgsl");
-        let result = experimental::ShaderProgram::new_v1(&format!(
+        let result = shader_paint::ShaderProgram::new(&format!(
             "{source}\nfn paint(i: PaintInput) -> vec4<f32> {{ return seascape_color(i.uv, i.size, parameters); }}"
         ));
         assert!(result.unwrap_err().to_string().contains("loops are not supported"));
-        let expanded = expand_v1(source.into());
+        let expanded = expand_shader_paint_loops(source.into());
         assert!(!expanded.contains("for ("));
         assert_eq!(expanded.matches("state = trace_step(state, origin, direction, p);").count(), 32);
         assert_eq!(expanded.matches("let d = sea_octave").count(), 5);
