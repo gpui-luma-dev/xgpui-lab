@@ -46,7 +46,7 @@ impl ExtensionPane {
             view.update(cx, |view, cx| view.deactivate(cx));
         }
         self.active_demo = match page {
-            "Interactive Color Spaces" if self.color.is_some() => {
+            "Color Spaces" if self.color.is_some() => {
                 let view = self.interactive_spaces.get_or_insert_with(|| {
                     cx.new(|cx| crate::color_demos::InteractiveSpaces::new(self.look.clone(), cx))
                 });
@@ -172,8 +172,8 @@ mod tests {
         let mut app = TestAppContext::single();
         app.update(|cx| gpui_luma::init(cx).expect("initialize SDK"));
         for (id, lab, existing) in [
-            ("xgpui-color-tabs", "Italy Photo Comparison", "Color Spaces"),
-            ("xgpui-color-tabs", "Interactive Color Spaces", "Color Spaces"),
+            ("xgpui-color-tabs", "Italy Photo Comparison", "Conversions"),
+            ("xgpui-color-tabs", "Color Spaces", "Conversions"),
             ("xgpui-gamut-tabs", "Chromaticity & Gamut", "Wide Color Fills"),
         ] {
             let (view, cx) =
@@ -181,11 +181,18 @@ mod tests {
             cx.run_until_parked();
             cx.update(|_, cx| {
                 let pane = view.read(cx);
-                assert!(pane.italy.is_none() && pane.chromaticity.is_none());
+                assert!(pane.interactive_spaces.is_none() && pane.italy.is_none() && pane.chromaticity.is_none());
             });
             view.update(cx, |pane, cx| pane.activate_page(lab, cx));
             cx.run_until_parked();
-            let first = cx.update(|_, cx| view.read(cx).active_demo.as_ref().unwrap().entity_id());
+            let first = cx.update(|_, cx| {
+                let pane = view.read(cx);
+                let active = pane.active_demo.as_ref().unwrap().entity_id();
+                if lab == "Color Spaces" {
+                    assert_eq!(active, pane.interactive_spaces.as_ref().unwrap().entity_id());
+                }
+                active
+            });
             view.update(cx, |pane, cx| pane.activate_page(existing, cx));
             cx.run_until_parked();
             cx.update(|_, cx| assert!(view.read(cx).active_demo.is_none()));

@@ -471,7 +471,7 @@ impl InteractiveSpaces {
 impl InteractiveSpaces {
     fn render_header(&self) -> Div {
         vstack! {
-            div().text_3xl().font_weight(FontWeight::SEMIBOLD).child("Interactive Color Spaces"),
+            div().text_3xl().font_weight(FontWeight::SEMIBOLD).child("Color Spaces"),
             self.caption("Explore color models by comparing one selected color in sRGB, Display P3, OKLCH, and Rec2020."),
         }
         .gap_2()
@@ -590,7 +590,7 @@ impl Render for InteractiveSpaces {
             .text_color(chrome.body_text)
             .child(
                 vstack! {
-                    self.caption("xgpui-color  /  Interactive Color Spaces"), self.render_header(), content,
+                    self.caption("xgpui-color  /  Color Spaces"), self.render_header(), content,
                 }
                 .w_full()
                 .max_w(px(1240.))

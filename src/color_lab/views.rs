@@ -57,7 +57,6 @@ impl Render for ColorPage {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_choices(_cx);
         let actions: &[Action] = match self.active_tab.as_ref() {
-            "Color Spaces" => &[Action::Source, Action::Reset],
             "Conversions" => &[Action::Source, Action::Destination, Action::Reset],
             "Interpolation" => &[Action::Preset, Action::Mapping, Action::Alpha, Action::Hue],
             "Gamut Mapping" => &[Action::Source, Action::Destination, Action::Preset, Action::Alpha, Action::Reset],
@@ -73,12 +72,11 @@ impl Render for ColorPage {
             ],
         };
         let parameters: &[Parameter] = match self.active_tab.as_ref() {
-            "Color Spaces" | "Conversions" | "Gamut Mapping" => &[Parameter::Red, Parameter::Green, Parameter::Blue],
+            "Conversions" | "Gamut Mapping" => &[Parameter::Red, Parameter::Green, Parameter::Blue],
             "CPU Gradients" => &[Parameter::Position, Parameter::AxisX, Parameter::AxisY],
             _ => &[],
         };
         let result = match self.active_tab.as_ref() {
-            "Color Spaces" => self.spaces(),
             "Conversions" => self.conversions(),
             "Interpolation" => self.interpolation(),
             "Gamut Mapping" => self.mapping(),
@@ -153,35 +151,6 @@ impl Render for ColorPage {
 }
 
 impl ColorPage {
-    fn spaces(&self) -> anyhow::Result<AnyElement> {
-        let mut view = div()
-            .flex()
-            .flex_col()
-            .gap_4()
-            .child(format!("Same encoded components {} interpreted in three RGB spaces", triple(self.input)));
-        for space in SPACES {
-            let linear = EncodedRgb::new(space, self.input)?.decode()?;
-            view = view.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(format!(
-                        "{space:?} · linear RGB {} · XYZ D65 {}",
-                        triple(linear.components()),
-                        triple(linear.to_xyz()?.components())
-                    ))
-                    .child(swatch(preview(linear, GamutMapping::ReduceChroma, 1.)?)),
-            );
-        }
-        let selected = SPACES[self.source_index];
-        view = view.child(format!("{selected:?} · linear RGB → XYZ D65 matrix"));
-        for values in selected.linear_to_xyz_matrix() {
-            view = view.child(triple(values));
-        }
-        Ok(view.child("sRGB and Display P3 share a transfer function; Rec.2020 uses its SDR transfer. All three use a D65 white point. Previews use chroma reduction into sRGB.").into_any_element())
-    }
-
     fn conversions(&self) -> anyhow::Result<AnyElement> {
         let source = SPACES[self.source_index];
         let destination = SPACES[self.destination_index];
