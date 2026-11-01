@@ -349,7 +349,7 @@ mod gpu_tests {
 
     #[test]
     #[ignore = "requires a native Metal device"]
-    fn srgb_contour_is_confined_to_wide_field_gamut_boundaries() -> anyhow::Result<()> {
+    fn srgb_contour_and_stripes_are_confined_to_wide_field_gamut_regions() -> anyhow::Result<()> {
         let mut renderer = gpui_apple::metal_renderer::MetalHeadlessRenderer::new();
         renderer.set_color_mode(gpui::WindowColorMode::WideGamutSdr)?;
         for scale in [1., 2.] {
@@ -392,8 +392,8 @@ mod gpu_tests {
                                 let gradient = (margin(x + 1, y)? - margin(x - 1, y)?).abs()
                                     + (margin(x, y + 1)? - margin(x, y - 1)?).abs();
                                 anyhow::ensure!(
-                                    margin(x, y)?.abs() < gradient * 2. + 1e-6,
-                                    "contour must follow the unclipped sRGB boundary"
+                                    margin(x, y)? < -1e-6 || margin(x, y)?.abs() < gradient * 2. + 1e-6,
+                                    "only out-of-gamut pixels and the sRGB boundary may change"
                                 );
                                 anyhow::ensure!(x < width - (6. * scale) as u32, "endpoint strip unchanged");
                             }
@@ -402,8 +402,8 @@ mod gpu_tests {
                     if source == 0 || saturation == 0. {
                         anyhow::ensure!(changed == 0, "no contour for an entirely sRGB field: source={source}, saturation={saturation}, scale={scale}, changed={changed}");
                     } else {
-                        anyhow::ensure!(changed > 0 && changed < width * height / 12,
-                            "wide field must have a thin contour, source={source}, saturation={saturation}, changed={changed}");
+                        anyhow::ensure!(changed > 0 && changed < width * height / 2,
+                            "wide field must retain visible colors between stripes, source={source}, saturation={saturation}, changed={changed}");
                     }
                 }
             }

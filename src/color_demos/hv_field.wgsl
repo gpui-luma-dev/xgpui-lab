@@ -33,9 +33,12 @@ fn shade(input: ShaderInput, p: Parameters) -> vec4<f32> {
     // The selected program declares the output encoding. No sRGB gamut mapping.
     var rgb = select(encoded, gamut_decode(encoded, u32(p.source_space)), p.source_space > 0.5);
     var contour = vec2(0.0);
+    var is_out_of_gamut = false;
     if p.kind == 0.0 && p.source_space > 0.5 && p.color.g > 0.5 && p.color.r > 0.00001 {
         let srgb = gamut_convert(rgb, u32(p.source_space), 0u);
         let margin = min(min(srgb.r, min(srgb.g, srgb.b)), 1.0 - max(srgb.r, max(srgb.g, srgb.b)));
+        is_out_of_gamut = margin < -0.000001
+            && input.position.x < input.size.x - p.strip_width;
         let gradient = length(vec2(dpdx(margin), dpdy(margin)));
         let pixels = abs(margin) / max(gradient, 0.0000001);
         let inset = 2.0 / max(input.scale_factor, 1.0);
@@ -43,6 +46,12 @@ fn shade(input: ShaderInput, p: Parameters) -> vec4<f32> {
             && input.position.x > inset && input.position.x < input.size.x - p.strip_width - inset;
         if interior && gradient > 0.0000001 {
             contour = vec2(1.0 - smoothstep(0.75, 1.5, pixels), 1.0 - smoothstep(0.0, 1.0, pixels));
+        }
+    }
+    if is_out_of_gamut {
+        let stripe = fract((input.position.x + input.position.y) * input.scale_factor / 12.0);
+        if stripe < 0.25 {
+            rgb = mix(rgb, vec3(0.0), 0.35);
         }
     }
     if p.sdr_fallback > 0.5 {
