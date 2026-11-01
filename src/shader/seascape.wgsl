@@ -7,7 +7,7 @@
  * Author's source blob: 1db1492a27e6f97059edeb75eeda03f3521be451
  * Modified: GLSL translated to WGSL; explicit parameters, top-left UV conversion,
  * out argument replaced by trace state, defined reversed smoothstep, safe epsilons.
- * The app expands bounded loops for the loop-free v1 contract; v2 retains loops.
+ * The app expands bounded loops for the loop-free shader-paint contract; instanced shaders retain loops.
  */
 struct Parameters {
     time: f32,

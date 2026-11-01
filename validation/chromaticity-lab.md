@@ -179,3 +179,49 @@ markers, control wrapping, sample retention while scrolling and returning from
 sRGB2014 to named Adobe RGB/Mid gray were verified. No implementation change
 was needed. This completes the earlier pending published-mode UI check; it
 remains a composition validation, not a measurement of physical monitor output.
+
+## Full-app integration — 2026-10-30
+
+The main app now has a Color & Gamut rail entry (chart icon), in addition to the existing crate-specific color/gamut examples. It lazily creates and retains the shared chromaticity view. The standalone binary delegates to the same `src/chromaticity.rs` implementation, retaining its fixture flags, diagnostics and separate-window behavior. The embedded view follows the actual shared window's effective color mode rather than keeping a stale local wide-mode flag.
+
+The view retains source/transfer and ICC selection, P3/Rec.2020 storage, mapping, alpha, xy/u′v′, fills, native/preview samples, nested effects, CPU FP16 inspection and the existing on-demand Metal readback. New rail chrome uses the app's existing SDK navigation controls. Source pixels, references and profile/data assets are unchanged.
+
+Validation: both app binaries build with the aligned local xgpui/Luma dependencies; all 14 standalone color tests pass; strict standalone Clippy passes. The focused headless `app::tests::shell_rail_routes_to_retained_workspaces` test passes, including entry/re-entry and retained color-view identity. No GUI launch or new full-app live Metal acceptance is claimed. Restart the existing app and select the chart icon to try it. Existing standalone native GPU evidence remains separate.
+
+## Hidden wide-gamut symbol example
+
+Color & Gamut now offers a “Try the hidden wide-gamut symbol” view, shared by the standalone binary and app. It generates an original ring/X motif as supplied pixels: native linear P3 red background and sRGB red converted to P3 for the symbol. Selectable thumbnails show a clipped sRGB preview, native P3 presentation or a magenta out-of-sRGB mask. The mask classifies pre-storage linear source colors with a 1e-10 boundary tolerance; edge coverage is linear. Both source colors clip to sRGB red, while their native P3 coordinates differ. Wide-disabled/unsupported output explicitly falls back to the sRGB preview. No external image format/profile decoding or borrowed WebKit artwork is used.
+
+Inspiration: https://webkit.org/blog-files/color-gamut/ and https://webkit.org/blog/6682/improving-color-on-the-web/. This is a similar demonstration, not byte-identical reproduction of its assets or exact color pair.
+
+Validation: 15 color tests pass, including a new mathematical/actual-FP16 packing check for distinct native colors that collapse to the same sRGB preview, mask endpoints and motif geometry. Both binaries build, strict standalone Clippy passes, and the main app's headless navigation regression passes. No live full-app display observation or physical gamut measurement is claimed for this new example; restart and select the example on a native wide-gamut display for visual acceptance.
+
+## Section tabs and explicit window modes
+
+The app's Color & Gamut workspace now uses the existing SDK Tabs control and StudioTabs template, with “Chromaticity & Metadata” and “Hidden Wide-Gamut Symbol” tabs. The app hides the standalone example-switch/back buttons. One retained color view preserves each example's settings and lazily prepares the symbol images. The standalone binary retains its own navigation buttons. Both examples expose explicit Standard (sRGB) and Wide gamut window mode choices; selection follows the requested mode, while effective output status remains separate.
+
+Checks: both entry points compile, 16 color tests pass (including example-state retention), and the full app headless navigation-retention test passes. No new GUI launch or visual acceptance is claimed.
+
+## Licensed photographic comparison
+
+The app adds a third SDK section tab, Photo Comparison. It embeds Laitche's current original Adobe RGB kingfisher JPEG with SHA-256 `7766d228c6c61a16eab2871b5772738a2ce3ab6b74e1195b4f2095a22aca8fcc`. Provenance, CC BY-SA 4.0 terms and adaptation notes are in `assets/colorimetry/photos/README.md`, NOTICE and clickable in-app credits. Original bytes and embedded ICC are retained.
+
+A cancellable background worker decodes the fixed JPEG using the lab's existing image dependency, parses its 560-byte ICC profile using xgpui-color/icc, and samples a bounded 1200-pixel-wide derivative. The source pixels plus custom RGB definition go to the normal media loader with explicit Rec.2020 storage. sRGB preview and native wide placement share that source texture. A separate mask uses source XYZ→linear-sRGB excursions (1e-7 tolerance), magenta outside sRGB and luminance grayscale inside. No profile reassignment, external sRGB comparison image, new core format loader or network runtime dependency is added. Selection and the existing Standard/Wide window controls are independent. The standalone binary can open this view with `--photo`.
+
+Validation: 17 shared color tests pass, including exact original checksum, successful embedded profile parsing, sampled real gamut excursions and cancellation rejection. Strict standalone Clippy and the main app headless navigation-retention regression pass. Both binaries build. No full-app live photographic display observation is claimed; visual/native GPU acceptance remains separate from decoding and compilation.
+
+### Photo overlay correction
+
+The photographic Out-of-sRGB areas view now retains the color sRGB preview and replaces only source pixels outside sRGB with cyan. It no longer desaturates in-gamut pixels. Classification remains based on the original decoded source XYZ, before clipping; highlight colors are supplied as linear-sRGB metadata. The hidden-symbol example's separate diagnostic mask is unchanged.
+
+### Photo native/preview investigation
+
+A new macOS headless Metal regression paints the same ICC-interpreted, Rec.2020-stored plumage sample through the sRGB-preview and native-wide routes in one scene. It waits for upload and measures a fresh FP16 composition frame, rejecting placeholder values. Observed linear-P3 values: preview `[0.1376953125, 0.75, 0.96630859375, 1]`, native `[0.005950927734375, 0.7431640625, 0.97216796875, 1]`; maximum channel difference `0.131744384765625`. This establishes different compositor output for that photo sample, not perceptual distinguishability on the user's monitor or a resolution of the reported live visual issue. No OS display mapping or physical output is measured.
+
+## WebKit Italy replacement
+
+Replaced the kingfisher fixture with the exact Italy-sRGB.jpg, Italy-P3.jpg and Italy-oog.jpg files from https://webkit.org/blog-files/color-gamut/. Photo Comparison credits and links WebKit. All three original JPEGs and SHA-256 hashes are retained; macOS ColorSync prepares opaque linear Display P3 RGBA16F buffers offline. Runtime consumes explicit pixels and metadata, including WebKit’s supplied highlighted photo. Compare orange/red umbrellas side by side in Wide gamut. Standard clips P3 output; these separately authored source versions are not guaranteed identical in Standard. The Metal test checks an orange umbrella pixel from the actual two source buffers after upload.
+
+### Standard presentation color matching
+
+The Metal Default path previously left CAMetalLayer.colorspace unspecified, including when switching back from Wide. Default now explicitly tags its bounded encoded BGRA8 output as sRGB both at initial layer configuration and after switching. Wide remains RGBA16F extended linear Display P3. A platform regression verifies actual layer colorspace equality, format and EDR state at startup and across repeated mode switches. The photo’s supplied highlighted JPEG contains diagnostic markings; their continued visibility in Standard does not indicate gamut leakage.

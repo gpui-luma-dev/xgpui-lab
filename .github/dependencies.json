@@ -1,7 +1,7 @@
 {
   "xgpui": {
     "repository": "gpui-luma-dev/xgpui",
-    "revision": "9e6a732110a1fb1cd6b7ff12bf306d95ceb1fb12"
+    "revision": "4c09f548be0bc6b8bd75ba5464d57bd4f6793d5c"
   },
   "gpui-luma": {
     "repository": "gpui-luma-dev/gpui-luma",

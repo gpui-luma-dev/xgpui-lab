@@ -152,8 +152,8 @@ mod tests {
             for (rgba, expected) in [([0., 1., 0., 0.5], green), ([0.18, 0.18, 0.18, 0.5], gray)] {
                 let sample = inspect(&color, rgba).unwrap();
                 let energy = if rgba[0] == 0. { 1. } else { 3. * decoded };
-                for c in 0..3 {
-                    assert!((sample.xyz[c] - expected[c]).abs() <= 128. * f64::EPSILON * energy);
+                for (actual, expected) in sample.xyz.into_iter().zip(expected) {
+                    assert!((actual - expected).abs() <= 128. * f64::EPSILON * energy);
                 }
             }
             let gray = inspect(&color, [0.18, 0.18, 0.18, 0.5]).unwrap();

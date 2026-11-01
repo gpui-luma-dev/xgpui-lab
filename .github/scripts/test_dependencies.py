@@ -67,6 +67,24 @@ class DependencyContractTests(unittest.TestCase):
         self.assertEqual(dependencies.git(self.root.parent / "gpui-luma", "status", "--porcelain"), "")
         self.assertEqual(dependencies.git(self.root.parent / "xgpui", "status", "--porcelain"), "")
 
+    def test_aligns_luma_to_the_pinned_sibling(self):
+        manifest = self.root.parent / "gpui-luma/Cargo.toml"
+        manifest.write_text('gpui = { package = "xgpui", version = "=1.0.0" }\n'
+                            'gpui_platform = {\n  package = "xgpui-platform",\n'
+                            '  version = "=1.0.0",\n}\n')
+        dependencies.align_luma(self.root)
+        result = manifest.read_text()
+        self.assertIn('path = "../xgpui/gpui/crates/gpui"', result)
+        self.assertIn('path = "../xgpui/gpui/crates/gpui-platform"', result)
+        self.assertNotIn('version = "=1.0.0"', result)
+
+    def test_rejects_unexpected_luma_manifest_without_writing(self):
+        manifest = self.root.parent / "gpui-luma/Cargo.toml"
+        original = manifest.read_text()
+        with self.assertRaisesRegex(ValueError, "declaration changed"):
+            dependencies.align_luma(self.root)
+        self.assertEqual(manifest.read_text(), original)
+
     def test_cache_identity_changes_with_manifest_or_lock(self):
         initial = dependencies.fingerprint(self.root)
         with (self.root / "Cargo.lock").open("a") as file:
