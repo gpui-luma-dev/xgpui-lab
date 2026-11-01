@@ -384,8 +384,11 @@ pub(crate) fn run_cli(args: &[String]) -> Result<()> {
         .iter()
         .position(|arg| arg == "--gamut-benchmark")
         .and_then(|index| args.get(index + 1))
-        .context("expected --gamut-benchmark <all|texture|instanced|gradient|sdr|controls>")?;
-    let cases = if case == "all" {
+        .context("expected --gamut-benchmark <all|texture|instanced|gradient|sdr|controls|navigation>")?;
+    let navigation = case == "navigation";
+    let cases = if navigation {
+        Vec::new()
+    } else if case == "all" {
         Case::ALL.to_vec()
     } else {
         vec![Case::ALL.into_iter().find(|candidate| candidate.id() == case).context("unknown Gamut benchmark")?]
@@ -404,6 +407,10 @@ pub(crate) fn run_cli(args: &[String]) -> Result<()> {
             std::process::exit(1);
         }
         let mut results = Vec::new();
+        if navigation {
+            let result = crate::app::navigation_regression::run(cx, &output);
+            results.push(result.unwrap_or_else(|error| json!({"case": "navigation", "error": format!("{error:#}")})));
+        }
         for case in cases {
             let result = capture(case, &Settings::default(), crate::theme::default_look(), cx)
                 .and_then(|capture| save_capture(capture, &output, case));
