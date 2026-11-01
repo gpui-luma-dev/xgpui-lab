@@ -98,3 +98,11 @@ They are not covered by the application's Apache-2.0 license.
 Changes: GLSL translated to WGSL, explicit host parameters, UV orientation,
 trace state, numerical guards, optional normal detail, loop expansion for shader paint.
 See licenses/Seascape-CC-BY-NC-SA-3.0.txt for provenance and license links.
+
+WebKit Italy photographic comparison
+------------------------------------
+Italy-sRGB.jpg, Italy-P3.jpg and Italy-oog.jpg from WebKit's Wide Gamut demo:
+https://webkit.org/blog-files/color-gamut/
+Original JPEGs retained unchanged; linear Display P3 pixel buffers prepared
+with macOS CoreGraphics/ColorSync. The highlighted version is supplied by WebKit.
+These third-party image assets are separate from the application's code license.

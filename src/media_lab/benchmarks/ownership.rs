@@ -2,7 +2,9 @@
 use anyhow::{Context as _, Result, ensure};
 use gpui::{prelude::*, *};
 use gpui_apple::{custom_draw::MetalCustomContext, metal_renderer::MetalHeadlessRenderer};
-use gpui_apple::metal::{MTLCommandBufferStatus, MTLCommandBuffer as _, MTLCommandQueue as _, MTLDevice as _, MTLSharedEvent as _};
+use gpui_apple::metal::{
+    MTLCommandBufferStatus, MTLCommandBuffer as _, MTLCommandQueue as _, MTLDevice as _, MTLSharedEvent as _,
+};
 use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_core_foundation::CFRetained;
 use objc2_core_video::CVPixelBuffer;
@@ -49,7 +51,9 @@ const FAMILIES: [&str; 17] = [
 struct SharedEventGate(Retained<ProtocolObject<dyn gpui_apple::metal::MTLSharedEvent>>);
 unsafe impl Send for SharedEventGate {}
 impl SharedEventGate {
-    fn signal(&self) { self.0.setSignaledValue(1); }
+    fn signal(&self) {
+        self.0.setSignaledValue(1);
+    }
 }
 
 struct Gate {

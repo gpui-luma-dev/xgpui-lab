@@ -16,6 +16,7 @@ use crate::extension_pane::ExtensionPane;
 enum Workspace {
     Gradients,
     Compositions,
+    ColorGamut,
     Color,
     Gamut,
     Media,
@@ -29,6 +30,7 @@ pub struct XgpuiLabApp {
     look: Arc<Look>,
     gradient_builder: Entity<GradientBuilder>,
     compositions: Option<Entity<ColorCompositions>>,
+    color_gamut: Option<Entity<crate::color_gamut_page::Page>>,
     navigation: Vec<(Workspace, Entity<gpui_luma::controls::button::Button>)>,
     extensions: Vec<(Workspace, Entity<ExtensionPane>)>,
     active: Workspace,
@@ -115,6 +117,7 @@ impl XgpuiLabApp {
         let navigation = [
             (Workspace::Gradients, "Gradients", lucide_svg_static::Icon::Blend),
             (Workspace::Compositions, "Compositions", lucide_svg_static::Icon::Palette),
+            (Workspace::ColorGamut, "Color & Gamut", lucide_svg_static::Icon::ChartNoAxesCombined),
             (Workspace::Color, "xgpui-color", lucide_svg_static::Icon::Pipette),
             (Workspace::Gamut, "xgpui-gamut", lucide_svg_static::Icon::SwatchBook),
             (Workspace::Media, "xgpui-media", lucide_svg_static::Icon::Film),
@@ -157,6 +160,7 @@ impl XgpuiLabApp {
             look,
             gradient_builder,
             compositions: None,
+            color_gamut: None,
             navigation,
             extensions,
             active: Workspace::Gradients,
@@ -199,6 +203,9 @@ impl Render for XgpuiLabApp {
                 this.presentation_pending = false;
                 cx.notify();
             });
+        }
+        if self.active == Workspace::ColorGamut && self.color_gamut.is_none() {
+            self.color_gamut = Some(_cx.new(|cx| crate::color_gamut_page::Page::new(_window, self.look.clone(), cx)));
         }
         let chrome = self.look.chrome();
         let sans_family = "System UI".to_string();
@@ -277,6 +284,11 @@ impl Render for XgpuiLabApp {
                             .bg(chrome.content_background)
                             .child(match (self.active, &self.compositions) {
                                 (Workspace::Compositions, Some(view)) => view.clone().into_any_element(),
+                                (Workspace::ColorGamut, _) => self
+                                    .color_gamut
+                                    .as_ref()
+                                    .map(|view| view.clone().into_any_element())
+                                    .unwrap_or_else(|| div().into_any_element()),
                                 (Workspace::Gradients, _) => self.gradient_builder.clone().into_any_element(),
                                 _ => self
                                     .extensions
@@ -339,10 +351,22 @@ mod tests {
         let (view, cx) = app.add_window_view(XgpuiLabApp::new);
         cx.run_until_parked();
         let navigation = cx.update(|_, cx| view.read(cx).navigation.clone());
+        let mut retained_color_gamut = None;
         for (expected, button) in navigation.iter().chain(navigation.iter().rev()) {
             button.update(cx, |_, cx| cx.emit(gpui_luma::controls::button::ButtonEvent::Click));
             cx.run_until_parked();
-            cx.update(|_, cx| assert_eq!(view.read(cx).active, *expected));
+            cx.update(|_, cx| {
+                let state = view.read(cx);
+                assert_eq!(state.active, *expected);
+                if *expected == Workspace::ColorGamut {
+                    let color = state.color_gamut.as_ref().expect("color workspace loaded");
+                    if let Some(first) = &retained_color_gamut {
+                        assert_eq!(color, first);
+                    } else {
+                        retained_color_gamut = Some(color.clone());
+                    }
+                }
+            });
         }
     }
 }

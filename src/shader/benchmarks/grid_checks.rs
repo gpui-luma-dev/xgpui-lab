@@ -73,7 +73,14 @@ fn verify(renderer: &mut dyn PlatformHeadlessRenderer, programs: &GridPrograms) 
             let mut pair = Vec::new();
             for typed in [false, true] {
                 let image = renderer.render_scene_to_image(&scene(programs, p, typed, clipped, opacity)?, extent)?;
-                compare(&image, &expected, &format!("grid case={case} api={} clip={clipped}", if typed { "instanced" } else { "shader_paint" }))?;
+                compare(
+                    &image,
+                    &expected,
+                    &format!(
+                        "grid case={case} api={} clip={clipped}",
+                        if typed { "instanced" } else { "shader_paint" }
+                    ),
+                )?;
                 pair.push(image);
             }
             compare(&pair[0], &pair[1], "shader paint/instanced parity")?;

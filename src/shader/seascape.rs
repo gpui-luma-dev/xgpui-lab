@@ -224,18 +224,22 @@ impl SeaPane {
         }
         Ok(view
             .child(
-                div().flex_1().min_w(px(300.)).child("Instanced shader · native WGSL loops · 32-byte instance").child(
-                    canvas(
-                        |_, _, _| (),
-                        move |bounds, _, window, _| {
-                            if let Err(e) = window.paint_custom_shader(bounds, &typed, p) {
-                                tracing::error!("Seascape: {e:#}");
-                            }
-                        },
-                    )
-                    .w_full()
-                    .h(px(300.)),
-                ),
+                div()
+                    .flex_1()
+                    .min_w(px(300.))
+                    .child("Instanced shader · native WGSL loops · 32-byte instance")
+                    .child(
+                        canvas(
+                            |_, _, _| (),
+                            move |bounds, _, window, _| {
+                                if let Err(e) = window.paint_custom_shader(bounds, &typed, p) {
+                                    tracing::error!("Seascape: {e:#}");
+                                }
+                            },
+                        )
+                        .w_full()
+                        .h(px(300.)),
+                    ),
             )
             .into_any_element())
     }
