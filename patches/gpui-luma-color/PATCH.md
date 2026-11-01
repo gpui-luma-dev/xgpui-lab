@@ -12,3 +12,9 @@ created nor refreshed; removing it restores the configured CPU renderer.
 The app supplies the hue/value shader. The SDK patch adds no shader dependency.
 This is a prototype API for eventual upstream integration; remove this local
 crate patch after a published release provides the corresponding extension point.
+
+Native-color thumb fills are optional callbacks on `ColorThumb`, field state, and
+color-slider delegates. SDK borders, sizes, hit testing, keyboard behavior and
+normal sRGB fills stay in place. The slider builder shares a weak renderer
+reference so delegate updates also refresh native thumb colors without cycles.
+The SDK remains independent of the app-owned shader programs.

@@ -27,6 +27,9 @@ impl ExtensionPane {
     }
 
     pub fn deactivate(&mut self, cx: &mut Context<Self>) {
+        if let Some(page) = &self.interactive_spaces {
+            page.update(cx, |page, cx| page.deactivate(cx));
+        }
         if let Some(shader) = &self.shader {
             shader.update(cx, |page, cx| page.suspend(cx));
         }
@@ -39,6 +42,9 @@ impl ExtensionPane {
     }
 
     pub(crate) fn activate_page(&mut self, page: &'static str, cx: &mut Context<Self>) {
+        if let Some(view) = &self.interactive_spaces {
+            view.update(cx, |view, cx| view.deactivate(cx));
+        }
         self.active_demo = match page {
             "Interactive Color Spaces" if self.color.is_some() => {
                 let view = self.interactive_spaces.get_or_insert_with(|| {

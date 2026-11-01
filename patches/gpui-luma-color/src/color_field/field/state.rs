@@ -136,6 +136,7 @@ pub struct ColorFieldState {
     pub thumb_position: FieldThumbPosition,
     pub renderer: ColorFieldRenderer,
     pub(super) background_painter: Option<ColorFieldBackgroundPainter>,
+    pub(super) thumb_painter: Option<ColorFieldBackgroundPainter>,
     pub samples_per_axis: usize,
     pub mouse_behavior: ColorFieldMouseBehavior,
     pub disabled: bool,
@@ -186,6 +187,7 @@ impl ColorFieldState {
             thumb_position: FieldThumbPosition::EdgeToEdge,
             renderer: ColorFieldRenderer::RasterImage,
             background_painter: None,
+            thumb_painter: None,
             samples_per_axis: 180,
             mouse_behavior: ColorFieldMouseBehavior::default(),
             disabled: false,
@@ -218,6 +220,8 @@ impl ColorFieldState {
         self.image_cache = None;
         cx.notify();
     }
+
+    pub fn thumb_painter(mut self, painter: ColorFieldBackgroundPainter) -> Self { self.thumb_painter=Some(painter); self }
 
     pub fn saturation_value_rect(id: impl Into<SharedString>, hsv: Hsv, thumb_size: f32) -> Self {
         Self::new(id, hsv, Arc::new(RectDomain), Arc::new(SvAtHueModel)).thumb_size(thumb_size)

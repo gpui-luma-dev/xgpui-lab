@@ -38,6 +38,8 @@ impl ColorSliderBuilder {
         let domain_renderer =
             Arc::new(ColorSliderDomainRenderer::new(delegate, track_context.clone(), Arc::clone(&template_config)));
 
+        let weak = Arc::downgrade(&domain_renderer);
+        template_config.write().expect("color slider template config").thumb_painter = Some(Arc::new(move |position| weak.upgrade()?.thumb_painter(position)));
         Self {
             slider: new_slider(id)
                 .domain()

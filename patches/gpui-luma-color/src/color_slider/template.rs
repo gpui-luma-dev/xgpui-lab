@@ -15,16 +15,23 @@ use super::radius::{inner_track_corner_radius, inset_corner_radii, resolve_track
 use super::types::{Axis, ThumbConfig, ThumbPosition, ThumbSize, sizing};
 use super::visual::default_color_slider_visual;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ColorSliderTemplateConfig {
     pub thumb: ThumbConfig,
+    pub thumb_painter: Option<Arc<dyn Fn(f32) -> Option<super::color_thumb::ColorThumbPainter> + Send + Sync>>,
     pub corner_radii: CornersRefinement<gpui::AbsoluteLength>,
     pub size: ControlSize,
 }
 
+impl std::fmt::Debug for ColorSliderTemplateConfig {
+    fn fmt(&self, f:&mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ColorSliderTemplateConfig").field("thumb",&self.thumb).field("corner_radii",&self.corner_radii).field("size",&self.size).finish_non_exhaustive()
+    }
+}
+
 impl Default for ColorSliderTemplateConfig {
     fn default() -> Self {
-        Self { thumb: ThumbConfig::default(), corner_radii: CornersRefinement::default(), size: ControlSize::Md }
+        Self { thumb: ThumbConfig::default(), thumb_painter: None, corner_radii: CornersRefinement::default(), size: ControlSize::Md }
     }
 }
 
@@ -159,7 +166,8 @@ impl SliderTemplate for ColorSliderTemplate {
                         .shape(config.thumb.shape)
                         .axis(thumb_axis)
                         .active(model.active_thumb_id == Some(thumb.id))
-                        .when_some(fill_color, |this, color| this.color(color)),
+                        .when_some(fill_color, |this, color| this.color(color))
+                        .when_some(config.thumb_painter.as_ref().and_then(|painter|painter(thumb.position)), |this,painter|this.background_painter(painter)),
                 );
             if model.enabled {
                 node = attach_thumb_drag(

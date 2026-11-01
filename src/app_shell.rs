@@ -16,7 +16,7 @@ pub fn open(cx: &mut App) -> anyhow::Result<()> {
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             #[cfg(target_os = "macos")]
-            window_background: gpui::WindowBackgroundAppearance::Blurred,
+            window_background: gpui::WindowBackgroundAppearance::Opaque,
             window_min_size: Some(size(px(720.0), px(480.0))),
             titlebar: Some(titlebar),
             app_owns_titlebar_drag: true,

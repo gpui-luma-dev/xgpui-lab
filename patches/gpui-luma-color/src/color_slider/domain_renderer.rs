@@ -24,6 +24,9 @@ impl ColorSliderDomainRenderer {
         Self { inner: LockedDomain::new(delegate, context), template_config }
     }
 
+    pub fn thumb_painter(&self, position: f32) -> Option<super::color_thumb::ColorThumbPainter> {
+        self.inner.read_delegate().thumb_painter(&self.inner.context(),position)
+    }
     pub fn context(&self) -> ColorSliderTrackContext {
         self.inner.context()
     }

@@ -27,6 +27,8 @@ pub enum ColorInterpolation {
 }
 
 pub trait ColorSliderDelegate: Send + Sync + 'static {
+    fn thumb_painter(&self, _context: &super::track_context::ColorSliderTrackContext, _position: f32) -> Option<super::color_thumb::ColorThumbPainter> { None }
+
     fn paint_domain_track(
         &self,
         context: &super::track_context::ColorSliderTrackContext,

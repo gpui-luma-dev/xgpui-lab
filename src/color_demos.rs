@@ -3,6 +3,7 @@ mod chromaticity;
 mod chromaticity_model;
 mod chromaticity_shader;
 mod hv_field_shader;
+mod native_cpu_field;
 mod source_field;
 mod interactive_spaces;
 mod italy;

@@ -40,6 +40,7 @@ struct ColorFieldLayout {
     thumb_size: Pixels,
     thumb_offset: Pixels,
     thumb_color: Hsla,
+    thumb_painter: Option<crate::color_slider::color_thumb::ColorThumbPainter>,
     thumb_uv: (f32, f32),
     thumb_position: FieldThumbPosition,
     should_clip_rect_surface: bool,
@@ -70,6 +71,10 @@ impl ColorField {
             thumb_size: px(state.thumb_size),
             thumb_offset: px(-state.thumb_size * 0.5),
             thumb_color: model.thumb_color(&state.hsv),
+            thumb_painter: state.thumb_painter.clone().map(|painter| {
+                let hsv=state.hsv;
+                Arc::new(move |bounds, window: &mut Window, cx: &mut App| painter(bounds,hsv,window,cx)) as crate::color_slider::color_thumb::ColorThumbPainter
+            }),
             thumb_uv: state.thumb_uv(domain, model),
             thumb_position: state.thumb_position,
             should_clip_rect_surface: domain.is_rect() && state.thumb_position != FieldThumbPosition::EdgeToEdge,
@@ -156,7 +161,8 @@ impl ColorField {
             .ml(layout.thumb_offset)
             .mt(layout.thumb_offset)
             .size(layout.thumb_size)
-            .child(ColorThumb::new(layout.thumb_size).color(layout.thumb_color).active(false))
+            .child(ColorThumb::new(layout.thumb_size).color(layout.thumb_color).active(false)
+                .when_some(layout.thumb_painter.clone(), |thumb,painter|thumb.background_painter(painter)))
     }
 
     fn with_global_mouse_watch(root: Stateful<Div>, state_entity: Entity<ColorFieldState>) -> Stateful<Div> {

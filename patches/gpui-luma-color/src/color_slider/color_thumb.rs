@@ -54,9 +54,12 @@ pub(crate) fn bar_main_axis_size(thumb_size: Pixels) -> Pixels {
     px((thumb_size.as_f32() * 0.3).max(4.0))
 }
 
+pub type ColorThumbPainter = std::sync::Arc<dyn Fn(Bounds<Pixels>, &mut Window, &mut App) -> anyhow::Result<()> + Send + Sync>;
+
 #[derive(IntoElement)]
 pub struct ColorThumb {
     style: ThumbStyle,
+    painter: Option<ColorThumbPainter>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -121,8 +124,10 @@ struct ThumbMetrics {
 
 impl ColorThumb {
     pub fn new(size: impl Into<Pixels>) -> Self {
-        Self { style: ThumbStyle::new(size) }
+        Self { style: ThumbStyle::new(size), painter: None }
     }
+
+    pub fn background_painter(mut self, painter: ColorThumbPainter) -> Self { self.painter=Some(painter); self }
 
     pub fn color(mut self, color: impl Into<Hsla>) -> Self {
         self.style.color = Some(color.into());
@@ -246,9 +251,13 @@ impl RenderOnce for ColorThumb {
         let style = self.style;
         let metrics = style.metrics();
 
-        match style.shape {
+        let root = match style.shape {
             ThumbShape::Bar => Self::render_bar(style, metrics),
             ThumbShape::Circle | ThumbShape::Square => Self::render_circle_or_square(style, metrics),
-        }
+        };
+        root.relative().when_some(self.painter, |root, painter| {
+            root.child(canvas(|_,_,_|(), move |bounds,_,window,cx| { let _=painter(bounds,window,cx); })
+                .absolute().top(px(2.)).left(px(2.)).size((style.size-px(4.)).max(px(0.))))
+        })
     }
 }
