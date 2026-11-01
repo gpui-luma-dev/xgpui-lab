@@ -80,15 +80,16 @@ pub(super) fn program(source: usize) -> anyhow::Result<ShaderProgram<Parameters>
         0 => ShaderProgram::new(&code),
         1 => ShaderProgram::new_linear_p3(&code),
         2 => ShaderProgram::new_linear_rec2020(&code),
+        3 => ShaderProgram::new_linear_rec2020(&code),
         _ => anyhow::bail!("unsupported source space"),
     }
 }
 
 #[derive(Clone)]
-pub(super) struct NativeColors(Arc<[ShaderProgram<Parameters>; 3]>);
+pub(super) struct NativeColors(Arc<[ShaderProgram<Parameters>; 4]>);
 impl NativeColors {
     pub fn new() -> anyhow::Result<Self> {
-        Ok(Self(Arc::new([program(0)?, program(1)?, program(2)?])))
+        Ok(Self(Arc::new([program(0)?, program(1)?, program(2)?, program(3)?])))
     }
     pub fn paint(&self, bounds: Bounds<Pixels>, parameters: Parameters, window: &mut Window) -> anyhow::Result<()> {
         let mut parameters = parameters;
@@ -217,7 +218,7 @@ impl ColorSliderDelegate for NativeTrack {
 mod tests {
     #[test]
     fn portable_native_programs_validate() {
-        super::NativeColors::new().expect("sRGB, P3 and Rec2020 native programs");
+        super::NativeColors::new().expect("sRGB, P3, Rec2020 and Adobe RGB native programs");
     }
 }
 
@@ -420,26 +421,23 @@ mod gpu_tests {
         };
         use xgpui_media::{
             MediaLoader, MediaLimits, UploadStatus,
-            pipeline::{ImagePrimaries, PixelColor, AlphaMode},
+            pipeline::{PixelColor, AlphaMode},
         };
         let mut renderer = gpui_apple::metal_renderer::MetalHeadlessRenderer::new();
         renderer.set_color_mode(gpui::WindowColorMode::WideGamutSdr)?;
         let loader = MediaLoader::new(MediaLimits::default())?;
-        for source in [1, 2] {
+        for source in [1, 2, 3] {
             let width = 64;
             let height = 32;
             let pixels = native_cpu_field::pixels(source, width, height, 1., 1.)?;
-            let primaries = if source == 1 {
-                ImagePrimaries::DisplayP3
-            } else {
-                ImagePrimaries::Rec2020
-            };
+            let primaries = super::super::native_cpu_field::primaries(source);
+            let storage = super::super::native_cpu_field::storage_primaries(source);
             let mut job = loader.load_pixel_buffer(
                 width,
                 height,
                 pixels.clone(),
                 PixelColor::ExtendedLinear { primaries, alpha: AlphaMode::Straight },
-                primaries,
+                storage,
                 xgpui_color::GamutMapping::Clip,
             )?;
             let start = Instant::now();
