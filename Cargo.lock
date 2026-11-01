@@ -6859,6 +6859,9 @@ name = "xgpui-color"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aeaedb17e987461ac2f3c8cbcb3c2124854f4a31a0e8da21944073ab081dcbdf"
+dependencies = [
+ "moxcms",
+]
 
 [[package]]
 name = "xgpui-gamut"
@@ -6888,6 +6891,7 @@ dependencies = [
  "gtk",
  "image",
  "libc",
+ "log",
  "lucide-static-svg",
  "objc2 0.6.5",
  "objc2-core-foundation",

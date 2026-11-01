@@ -18,7 +18,7 @@ fn scene(programs: &GridPrograms, p: GridInstance, typed: bool, clipped: bool, o
             content_mask: mask,
             opacity,
             scale_factor: 1.,
-            program: programs.v2.scene_program(),
+            program: programs.instanced.scene_program(),
             data,
         }));
     } else {
@@ -73,10 +73,17 @@ fn verify(renderer: &mut dyn PlatformHeadlessRenderer, programs: &GridPrograms) 
             let mut pair = Vec::new();
             for typed in [false, true] {
                 let image = renderer.render_scene_to_image(&scene(programs, p, typed, clipped, opacity)?, extent)?;
-                compare(&image, &expected, &format!("grid case={case} v{} clip={clipped}", if typed { 2 } else { 1 }))?;
+                compare(
+                    &image,
+                    &expected,
+                    &format!(
+                        "grid case={case} api={} clip={clipped}",
+                        if typed { "instanced" } else { "shader_paint" }
+                    ),
+                )?;
                 pair.push(image);
             }
-            compare(&pair[0], &pair[1], "v1/v2 parity")?;
+            compare(&pair[0], &pair[1], "shader paint/instanced parity")?;
             captures.extend(pair);
         }
     }
@@ -87,8 +94,8 @@ pub(crate) fn run(output: &std::path::Path, cancel: &std::sync::atomic::AtomicBo
     let programs = GridPrograms::new()?;
     let mut renderer = gpui_platform::current_headless_renderer()?.context("native headless renderer unavailable")?;
     let captures = verify(renderer.as_mut(), &programs)?;
-    captures[0].save(output.join("grid-v1.png"))?;
-    captures[1].save(output.join("grid-v2.png"))?;
+    captures[0].save(output.join("grid-shader-paint.png"))?;
+    captures[1].save(output.join("grid-instanced.png"))?;
     #[cfg(feature = "grid-wgpu")]
     let parity = {
         crate::benchmarks::check_cancel(cancel)?;
@@ -97,13 +104,13 @@ pub(crate) fn run(output: &std::path::Path, cancel: &std::sync::atomic::AtomicBo
         for (native, portable) in captures.iter().zip(&portable) {
             compare(native, portable, "native/wgpu parity")?;
         }
-        portable[0].save(output.join("grid-wgpu-v1.png"))?;
-        portable[1].save(output.join("grid-wgpu-v2.png"))?;
+        portable[0].save(output.join("grid-wgpu-shader-paint.png"))?;
+        portable[1].save(output.join("grid-wgpu-instanced.png"))?;
         "passed"
     };
     #[cfg(not(feature = "grid-wgpu"))]
     let parity = "not run; enable --features grid-wgpu";
-    // Changing parameters every frame exercises immutable v1 snapshots and typed v2 draws.
+    // Changing parameters every frame exercises immutable shader-paint snapshots and typed instanced draws.
     let mut timings = Vec::new();
     for typed in [false, true] {
         let mut samples = Vec::new();
@@ -118,11 +125,11 @@ pub(crate) fn run(output: &std::path::Path, cancel: &std::sync::atomic::AtomicBo
             samples.push(start.elapsed().as_secs_f64() * 1000.);
         }
         samples.sort_by(f64::total_cmp);
-        timings.push(serde_json::json!({"api": if typed { "v2" } else { "v1" }, "frames":120,
+        timings.push(serde_json::json!({"api": if typed { "instanced" } else { "shader_paint" }, "frames":120,
             "median_ms": samples[60], "p95_ms":samples[114], "max_ms":samples[119]}));
     }
     Ok(
-        serde_json::json!({"checks":["public constructors", "16-byte typed ABI", "CPU reference", "v1/v2 parity", "parameter extremes", "non-square bounds", "clipping", "opacity"],
+        serde_json::json!({"checks":["public constructors", "16-byte typed ABI", "CPU reference", "shader paint/instanced parity", "parameter extremes", "non-square bounds", "clipping", "opacity"],
         "pixel_tolerance":3, "native_wgpu_parity":parity, "render_readback_timings":timings,
         "measurement":"CPU wall time including scene creation, GPU wait and readback at 160x96. Does not establish interactive 120 FPS.",
         "errors":[]}),

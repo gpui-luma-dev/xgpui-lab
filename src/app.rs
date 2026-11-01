@@ -35,6 +35,7 @@ use titlebar::TitlebarControls;
 enum Workspace {
     Gradients,
     Compositions,
+    ColorGamut,
     Color,
     Gamut,
     Media,
@@ -63,6 +64,7 @@ const SECTIONS: &[Section] = &[
             ("harmonies", "Color Harmonies"),
         ],
     ),
+    (Workspace::ColorGamut, "Color & Gamut", &[("Color & Gamut", "Color & Gamut")]),
     (
         Workspace::Color,
         "xgpui-color",
@@ -161,6 +163,7 @@ pub struct XgpuiLabApp {
     nav_look: Arc<Look>,
     gradient_builder: Entity<GradientBuilder>,
     compositions: Option<Entity<ColorCompositions>>,
+    color_gamut: Option<Entity<crate::color_gamut_page::Page>>,
     navigation: Vec<NavigationEntry>,
     panels: Entity<ResizablePanels>,
     rail: Entity<gpui_luma::controls::frame::FrameControl>,
@@ -186,7 +189,7 @@ impl XgpuiLabApp {
             .iter()
             .filter_map(|&(workspace, _, _)| {
                 let id = match workspace {
-                    Workspace::Gradients | Workspace::Compositions => return None,
+                    Workspace::Gradients | Workspace::Compositions | Workspace::ColorGamut => return None,
                     Workspace::Color => "xgpui-color-tabs",
                     Workspace::Gamut => "xgpui-gamut-tabs",
                     Workspace::Media => "xgpui-media-tabs",
@@ -348,6 +351,7 @@ impl XgpuiLabApp {
             nav_look,
             gradient_builder,
             compositions: None,
+            color_gamut: None,
             navigation,
             extensions,
             active: Workspace::Gradients,
@@ -370,6 +374,9 @@ impl XgpuiLabApp {
         self.active = workspace;
         self.active_page = page;
         let view: gpui::AnyView = match workspace {
+            Workspace::ColorGamut => self.color_gamut.as_ref()
+                .map(|view| view.clone().into())
+                .unwrap_or_else(|| self.content.borrow().clone()),
             Workspace::Gradients => {
                 self.gradient_builder.update(cx, |view, cx| view.activate_page(page, cx));
                 self.gradient_builder.clone().into()
@@ -446,6 +453,12 @@ fn sync_color_control_theme(look: &Look) {
 
 impl Render for XgpuiLabApp {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        if self.active == Workspace::ColorGamut && self.color_gamut.is_none() {
+            let page = _cx.new(|cx| crate::color_gamut_page::Page::new(_window, self.look.clone(), cx));
+            *self.content.borrow_mut() = page.clone().into();
+            self.color_gamut = Some(page);
+            self.panels.update(_cx, |_, cx| cx.notify());
+        }
         // Captured effects currently require SDR. Save the user's negotiated
         // request once and restore it when leaving a capture-dependent view.
         let needs_sdr = self
@@ -536,6 +549,7 @@ mod tests {
         cx.run_until_parked();
         let gradients = cx.update(|_, cx| view.read(cx).gradient_builder.clone());
         let mut compositions = None;
+        let mut color_gamut = None;
         for (workspace, page) in [
             (Workspace::Compositions, "harmonies"),
             (Workspace::Gradients, "mesh"),
@@ -546,6 +560,9 @@ mod tests {
             (Workspace::Gamut, "Chromaticity & Gamut"),
             (Workspace::Compositions, "picker"),
             (Workspace::Gradients, "freeform"),
+            (Workspace::ColorGamut, "Color & Gamut"),
+            (Workspace::Gradients, "mesh"),
+            (Workspace::ColorGamut, "Color & Gamut"),
         ] {
             let button = cx.update(|_, cx| {
                 view.read(cx)
@@ -562,6 +579,14 @@ mod tests {
                 let shell = view.read(cx);
                 assert_eq!((shell.active, shell.active_page), (workspace, page));
                 assert_eq!(shell.gradient_builder, gradients);
+                if workspace == Workspace::ColorGamut {
+                    let retained = shell.color_gamut.as_ref().expect("color workspace loaded");
+                    if let Some(first) = &color_gamut {
+                        assert_eq!(retained, first);
+                    } else {
+                        color_gamut = Some(retained.clone());
+                    }
+                }
                 assert_eq!(shell.navigation.iter().filter(|entry| entry.selected.load(Ordering::Relaxed)).count(), 1);
                 let retained = shell.compositions.as_ref().unwrap();
                 if let Some(first) = &compositions {

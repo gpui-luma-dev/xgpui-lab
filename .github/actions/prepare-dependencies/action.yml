@@ -1,5 +1,5 @@
 name: Prepare pinned sibling dependencies
-description: Check out exact xgpui/Luma revisions and verify clean dependency checkouts.
+description: Check out exact revisions, verify clean checkouts, and align Luma to sibling xgpui.
 outputs:
   cache-key:
     description: Hash of dependency pins, manifest, lockfile, and toolchain selection.
@@ -25,6 +25,6 @@ runs:
         ref: ${{ steps.pins.outputs.gpui-luma-revision }}
         path: gpui-luma
         persist-credentials: false
-    - name: Verify clean dependency pins
+    - name: Verify clean dependency pins and align Luma
       shell: bash
       run: python "${{ github.action_path }}/../../scripts/dependencies.py" prepare

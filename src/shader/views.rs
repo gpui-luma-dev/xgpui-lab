@@ -41,9 +41,6 @@ impl Render for ShaderPage {
             return div().size_full().child(self.shadow_pane.clone()).into_any_element();
         }
         if self.active_tab == "Typography" {
-            if window.color_status().effective() != gpui::WindowColorMode::Default {
-                return div().p_4().child("Preparing SDR presentation for typography effects…").into_any_element();
-            }
             return div().size_full().child(self.typography.clone()).into_any_element();
         }
         let now = Instant::now();

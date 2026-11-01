@@ -29,23 +29,23 @@ impl ShaderInstance for GridInstance {
     ];
 }
 pub(crate) struct GridPrograms {
-    pub v1: shader_paint::ShaderProgram,
-    pub v2: ShaderProgram<GridInstance>,
+    pub shader_paint: shader_paint::ShaderProgram,
+    pub instanced: ShaderProgram<GridInstance>,
 }
 impl GridPrograms {
     pub fn new() -> anyhow::Result<Self> {
         let common = include_str!("grid.wgsl");
         Ok(Self {
-            v1: shader_paint::ShaderProgram::new(&format!(
+            shader_paint: shader_paint::ShaderProgram::new(&format!(
                 "{common}\nfn paint(input: PaintInput) -> vec4<f32> {{ return grid_color(input.uv, parameters); }}"
             ))?,
-            v2: ShaderProgram::new(&format!(
+            instanced: ShaderProgram::new(&format!(
                 "{common}\nfn shade(input: ShaderInput, p: Parameters) -> vec4<f32> {{ return grid_color(input.uv, p); }}"
             ))?,
         })
     }
     pub fn paint(&self, p: GridInstance) -> anyhow::Result<shader_paint::ShaderPaint> {
-        self.v1.paint(
+        self.shader_paint.paint(
             shader_paint::ShaderParameters::new()
                 .float("grid_dimensions", p.grid_dimensions)
                 .float("cell_origin_x", p.cell_origin_x)
@@ -190,7 +190,7 @@ impl GridPane {
     fn preview(&self, p: GridInstance) -> anyhow::Result<AnyElement> {
         let programs = self.programs.as_ref().map_err(|e| anyhow::anyhow!("{e:#}"))?;
         let paint = programs.paint(p)?;
-        let typed = programs.v2.clone();
+        let typed = programs.instanced.clone();
         Ok(div()
             .flex()
             .flex_wrap()
@@ -199,11 +199,11 @@ impl GridPane {
                 div()
                     .flex_1()
                     .min_w(px(280.))
-                    .child("v1 · declarative paint")
+                    .child("Shader paint · declarative paint")
                     .child(painted().w_full().h(px(280.)).bg_paint(paint)),
             )
             .child(
-                div().flex_1().min_w(px(280.)).child("v2 · typed main-pass instance").child(
+                div().flex_1().min_w(px(280.)).child("Instanced shader · typed main-pass instance").child(
                     canvas(
                         |_, _, _| (),
                         move |bounds, _, window, _| {
@@ -251,7 +251,7 @@ mod tests {
         assert_eq!(GridInstance::FIELDS.iter().map(|f| f.offset).collect::<Vec<_>>(), [0, 4, 8, 12]);
         let programs = GridPrograms::new().unwrap();
         programs.paint(GridInstance::default()).unwrap();
-        assert!(programs.v1.paint(shader_paint::ShaderParameters::new()).is_err());
+        assert!(programs.shader_paint.paint(shader_paint::ShaderParameters::new()).is_err());
         assert!(programs.paint(GridInstance { line_width: f32::NAN, ..Default::default() }).is_err());
         let wrong = include_str!("grid.wgsl").replace("grid_dimensions: f32", "dimensions: f32");
         assert!(
