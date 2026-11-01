@@ -16,6 +16,23 @@ struct Cache {
     image: Option<MediaImage>,
 }
 
+pub(super) fn primaries(source: usize) -> ImagePrimaries {
+    match SPACES[source] {
+        xgpui_color::RgbSpace::Srgb => ImagePrimaries::Srgb,
+        xgpui_color::RgbSpace::DisplayP3 => ImagePrimaries::DisplayP3,
+        xgpui_color::RgbSpace::Rec2020 => ImagePrimaries::Rec2020,
+        xgpui_color::RgbSpace::AdobeRgb1998 => ImagePrimaries::AdobeRgb1998,
+    }
+}
+
+pub(super) fn storage_primaries(source: usize) -> ImagePrimaries {
+    if SPACES[source] == xgpui_color::RgbSpace::AdobeRgb1998 {
+        ImagePrimaries::Rec2020
+    } else {
+        primaries(source)
+    }
+}
+
 pub(super) fn pixels(
     source: usize,
     width: u32,
@@ -68,18 +85,14 @@ pub(super) fn painter(settings: FieldSettings, colors: NativeColors) -> anyhow::
             if cache.key != Some(key) {
                 cache.job = None;
                 cache.image = None;
-                let primaries = if source == 2 {
-                    ImagePrimaries::Rec2020
-                } else {
-                    ImagePrimaries::DisplayP3
-                };
+                let primaries = primaries(source);
                 let pixels = pixels(source, width, height, scale, settings.saturation())?;
                 cache.job = Some(cache.loader.load_pixel_buffer(
                     width,
                     height,
                     pixels,
                     PixelColor::ExtendedLinear { primaries, alpha: AlphaMode::Straight },
-                    primaries,
+                    storage_primaries(source),
                     xgpui_color::GamutMapping::Clip,
                 )?);
                 cache.key = Some(key);

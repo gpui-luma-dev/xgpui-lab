@@ -10,8 +10,8 @@ use gpui_luma_color::{
 };
 use xgpui_color::{EncodedRgb, GamutMapping, LinearRgb, RgbSpace};
 
-pub(super) const SPACES: [RgbSpace; 3] = [RgbSpace::Srgb, RgbSpace::DisplayP3, RgbSpace::Rec2020];
-pub(super) const NAMES: [&str; 3] = ["sRGB", "Display P3", "Rec.2020"];
+pub(super) const SPACES: [RgbSpace; 4] = [RgbSpace::Srgb, RgbSpace::DisplayP3, RgbSpace::Rec2020, RgbSpace::AdobeRgb1998];
+pub(super) const NAMES: [&str; 4] = ["sRGB", "Display P3", "Rec.2020", "Adobe RGB (1998)"];
 
 pub(super) fn srgb_reference(rgb: [f64; 3], space: RgbSpace) -> Result<Rgba, xgpui_color::ColorError> {
     srgb_reference_linear(EncodedRgb::new(space, rgb)?.decode()?)

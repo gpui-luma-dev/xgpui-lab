@@ -57,6 +57,10 @@ fn shade(input: ShaderInput, p: Parameters) -> vec4<f32> {
     if p.sdr_fallback > 0.5 {
         rgb = gamut_encode(clamp(gamut_convert(rgb, u32(p.source_space), 0u), vec3(0.0), vec3(1.0)), 0u);
     }
+    // Adobe RGB has no output tag; Rec2020 contains its gamut without clipping to P3.
+    if p.source_space == 3.0 && p.sdr_fallback < 0.5 {
+        rgb = gamut_convert(rgb, 3u, 2u);
+    }
     rgb = mix(rgb, vec3(0.0), contour.x);
     rgb = mix(rgb, vec3(1.0), contour.y);
     let radius = min(p.radius, min(input.size.x, input.size.y) * 0.5);

@@ -27,7 +27,7 @@ use crate::theme::{ColorVizLookExt, TextSize, TypographyExt};
 
 const CHANNELS: [&str; 3] = ["Red", "Green", "Blue"];
 const INITIAL: [f64; 3] = [0.86, 0.32, 0.58];
-const COLOR_FIELD_HEIGHT: f32 = 190.;
+const COLOR_FIELD_HEIGHT: f32 = 300.;
 const CHANNEL_GRADIENT_SEGMENTS: usize = 16;
 
 pub(crate) struct InteractiveSpaces {
@@ -216,7 +216,7 @@ impl InteractiveSpaces {
             .spawn(cx);
         let contour_toggle = radix::Switch::new("interactive-spaces-contour")
             .look(&look)
-            .label("sRGB gamut")
+            .label("sRGB out of gamut")
             .checked(true)
             .on_value_changed(cx, |this: &mut Self, enabled, cx| {
                 this.field_settings.set_contour(enabled);
@@ -506,10 +506,8 @@ impl InteractiveSpaces {
                 .text_color(label.label_color),
             self.gpu_toggle.clone(),
             self.contour_toggle.clone(),
-            self.caption("Striped colors cannot be represented in sRGB."),
             self.caption("Saturation"),
             div().w(px(200.)).child(self.saturation.clone()),
-            self.caption("Use arrow keys for precise adjustments"),
         }
         .flex_wrap()
         .items_center()
@@ -685,7 +683,7 @@ mod tests {
         });
         let bounds = cx.debug_bounds("interactive-spaces-field-bounds").unwrap();
         assert!(bounds.size.width > px(400.));
-        assert_eq!(bounds.size.height, px(190.));
+        assert_eq!(bounds.size.height, px(300.));
         cx.simulate_click(
             point(bounds.left() + bounds.size.width * 0.25, bounds.top() + bounds.size.height * 0.25),
             Default::default(),
@@ -804,7 +802,7 @@ mod tests {
         let mode = cx.update(|window, _| window.color_status().effective());
         let selector = cx.update(|_, cx| page.read(cx).source_choice.clone());
         let mut colors = Vec::new();
-        for (index, space) in [(0, SPACES[0]), (1, SPACES[1]), (2, SPACES[2]), (0, SPACES[0])] {
+        for (index, space) in SPACES.into_iter().enumerate().chain([(0, SPACES[0])]) {
             cx.update(|_, cx| selector.select(index, cx));
             cx.run_until_parked();
             cx.update(|window, cx| {
