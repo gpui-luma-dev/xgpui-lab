@@ -216,7 +216,7 @@ impl InteractiveSpaces {
             .spawn(cx);
         let contour_toggle = radix::Switch::new("interactive-spaces-contour")
             .look(&look)
-            .label("sRGB contour")
+            .label("sRGB gamut")
             .checked(true)
             .on_value_changed(cx, |this: &mut Self, enabled, cx| {
                 this.field_settings.set_contour(enabled);
@@ -506,6 +506,7 @@ impl InteractiveSpaces {
                 .text_color(label.label_color),
             self.gpu_toggle.clone(),
             self.contour_toggle.clone(),
+            self.caption("Striped colors cannot be represented in sRGB."),
             self.caption("Saturation"),
             div().w(px(200.)).child(self.saturation.clone()),
             self.caption("Use arrow keys for precise adjustments"),
