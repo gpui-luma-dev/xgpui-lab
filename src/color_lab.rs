@@ -205,7 +205,7 @@ impl ColorPage {
         .to_vec();
         let mut page = Self {
             look,
-            active_tab: "Color Spaces".into(),
+            active_tab: "Conversions".into(),
             input: [0.2, 0.5, 0.8],
             source_index: 0,
             destination_index: 1,
@@ -290,7 +290,7 @@ mod tests {
         let mut app = TestAppContext::single();
         app.update(|cx| gpui_luma::init(cx).expect("initialize SDK"));
         let (page, cx) = app.add_window_view(|_, cx| ColorPage::new(crate::theme::default_look(), cx));
-        for tab in ["Color Spaces", "Conversions", "Interpolation", "Gamut Mapping", "CPU Gradients"] {
+        for tab in ["Conversions", "Interpolation", "Gamut Mapping", "CPU Gradients"] {
             page.update(cx, |page, cx| {
                 page.active_tab = tab.into();
                 cx.notify();

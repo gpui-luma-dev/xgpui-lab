@@ -70,7 +70,6 @@ const SECTIONS: &[Section] = &[
         "xgpui-color",
         &[
             ("Color Spaces", "Color Spaces"),
-            ("Interactive Color Spaces", "Interactive Color Spaces"),
             ("Conversions", "Conversions"),
             ("Interpolation", "Interpolation"),
             ("Gamut Mapping", "Gamut Mapping"),
@@ -547,6 +546,26 @@ mod tests {
         app.update(|cx| gpui_luma::init(cx).expect("initialize SDK"));
         let (view, cx) = app.add_window_view(XgpuiLabApp::new);
         cx.run_until_parked();
+        cx.update(|_, cx| {
+            let shell = view.read(cx);
+            let color_pages: Vec<_> = shell
+                .navigation
+                .iter()
+                .filter(|entry| entry.workspace == Workspace::Color)
+                .map(|entry| entry.page)
+                .collect();
+            assert_eq!(
+                color_pages,
+                [
+                    "Color Spaces",
+                    "Conversions",
+                    "Interpolation",
+                    "Gamut Mapping",
+                    "CPU Gradients",
+                    "Italy Photo Comparison"
+                ]
+            );
+        });
         let gradients = cx.update(|_, cx| view.read(cx).gradient_builder.clone());
         let mut compositions = None;
         let mut color_gamut = None;
@@ -555,7 +574,7 @@ mod tests {
             (Workspace::Gradients, "mesh"),
             (Workspace::Color, "Gamut Mapping"),
             (Workspace::Color, "Italy Photo Comparison"),
-            (Workspace::Color, "Interactive Color Spaces"),
+            (Workspace::Color, "Color Spaces"),
             (Workspace::Gamut, "Gamut Mapping"),
             (Workspace::Gamut, "Chromaticity & Gamut"),
             (Workspace::Compositions, "picker"),
