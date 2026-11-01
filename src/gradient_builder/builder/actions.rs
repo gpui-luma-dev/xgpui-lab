@@ -12,6 +12,29 @@ use super::mesh::{
 };
 
 impl GradientBuilder {
+    pub(super) fn adjustments_supported(&self) -> bool {
+        match self.selected_tab {
+            BuilderTab::Gradients => !self.preview_p3 && !self.preview_renderer.is_shader(),
+            BuilderTab::Mesh => !self.mesh_shader_enabled && !self.mesh_p3,
+            BuilderTab::Freeform => !self.freeform_p3 && !self.freeform_gpu,
+        }
+    }
+
+    pub(super) fn sync_adjustment_support(&mut self, cx: &mut Context<Self>) {
+        let enabled = self.adjustments_supported();
+        if !enabled {
+            self.image_adjustments = super::super::paint::ImageAdjustments::default();
+            self.preview_image_cache = None;
+            self.render_task = None;
+        }
+        for slider in [&self.saturation_slider, &self.vibrance_slider] {
+            slider.update(cx, |slider, cx| {
+                if !enabled { slider.set_value(0., cx); }
+                slider.set_enabled(enabled, cx);
+            });
+        }
+    }
+
     pub(super) fn handle_stops_event(&mut self, event: &SliderEvent, cx: &mut Context<Self>) {
         match event {
             SliderEvent::ThumbAdded { thumb_id, .. } => {
@@ -99,6 +122,7 @@ impl GradientBuilder {
             }
             self.preview_image_cache = None;
             self.selected_tab = next;
+            self.sync_adjustment_support(cx);
             self.sync_visibility_button(cx);
             if next == BuilderTab::Freeform {
                 self.sync_freeform_buttons(cx);
@@ -106,6 +130,7 @@ impl GradientBuilder {
             }
             self.render_task = None;
             self.active_mesh_drag = None;
+        self.active_field_drag = None;
             self.color_picker_open = false;
             let _ = self.ensure_preview_image_cache(self.preview_size, cx);
             cx.notify();
@@ -118,7 +143,7 @@ impl GradientBuilder {
         };
         let next = match item_id.as_ref() {
             "radial" => GradientType::Radial,
-            "angular" => GradientType::Angular,
+            "conic" => GradientType::Conic,
             _ => GradientType::Linear,
         };
         if self.gradient_type != next {
@@ -135,10 +160,14 @@ impl GradientBuilder {
         let next = match item_id.as_ref() {
             "render" => PreviewRenderer::RenderImageSync,
             "render_async" => PreviewRenderer::RenderImageAsync,
+            "shader_paint" => PreviewRenderer::ShaderPaint,
+            "shader_brush" => PreviewRenderer::ShaderBrush,
             _ => PreviewRenderer::Quads,
         };
         if self.preview_renderer != next {
             self.preview_renderer = next;
+            self.sync_adjustment_support(cx);
+            self.render_task = None;
             let _ = self.ensure_preview_image_cache(self.preview_size, cx);
             cx.notify();
         }
@@ -224,8 +253,40 @@ impl GradientBuilder {
         cx.notify();
     }
 
+    pub(super) fn advance_mesh_palette(&mut self, elapsed: f32) {
+        let phase = self.mesh_palette_phase + elapsed * self.mesh_palette_speed;
+        let steps = phase.floor() as usize;
+        self.mesh_palette = (self.mesh_palette + steps) % super::mesh::MESH_PALETTE_NAMES.len();
+        self.mesh_palette_phase = phase.fract();
+        super::mesh::blend_mesh_palettes(&mut self.mesh_points, self.mesh_palette, self.mesh_palette_phase);
+        self.preview_image_cache = None;
+        self.render_task = None;
+    }
+
+    pub(super) fn cycle_mesh_palette(&mut self, cx: &mut Context<Self>) {
+        if self.selected_tab != BuilderTab::Mesh { return; }
+        self.mesh_palette_phase = 0.;
+        self.mesh_palette = (self.mesh_palette + 1) % super::mesh::MESH_PALETTE_NAMES.len();
+        super::mesh::apply_mesh_palette(&mut self.mesh_points, self.mesh_palette);
+        if self.color_picker_open {
+            if let MeshColorTarget::Point(index) = self.mesh_color_target {
+                if let Some(point) = self.mesh_points.get(index) {
+                    self.color_picker.update(cx, |picker, cx| picker.set_color(point.color, cx));
+                }
+            }
+        }
+        self.preview_image_cache = None;
+        self.render_task = None;
+        let _ = self.ensure_preview_image_cache(self.preview_size, cx);
+        cx.notify();
+    }
+
     pub(super) fn reset_mesh_state(&mut self, cx: &mut Context<Self>) {
         self.preview_image_cache = None;
+        if self.selected_tab != BuilderTab::Freeform {
+            self.mesh_palette = super::mesh::default_mesh_palette(self.mesh_grid_preset);
+            self.mesh_palette_phase = 0.;
+        }
         self.mesh_points = if self.selected_tab == BuilderTab::Freeform {
             super::freeform::default_points()
         } else {
@@ -235,6 +296,7 @@ impl GradientBuilder {
         self.next_point_id += self.mesh_points.len() as u64;
         if self.selected_tab == BuilderTab::Freeform {
             self.point_spreads = vec![100.0; self.mesh_points.len()];
+            self.point_transforms = vec![[0., 1.]; self.mesh_points.len()];
         }
         self.sync_freeform_buttons(cx);
         self.mesh_background = default_mesh_background();
@@ -242,6 +304,7 @@ impl GradientBuilder {
         self.sync_point_spread(cx);
         self.mesh_color_target = MeshColorTarget::Background;
         self.active_mesh_drag = None;
+        self.active_field_drag = None;
         self.color_picker_open = false;
         let _ = self.ensure_preview_image_cache(self.preview_size, cx);
         cx.notify();
@@ -459,6 +522,9 @@ impl GradientBuilder {
     }
 
     pub(super) fn effective_preview_renderer(&self) -> PreviewRenderer {
+        if self.selected_tab == BuilderTab::Gradients && self.preview_renderer.is_shader() {
+            return self.preview_renderer;
+        }
         if !self.image_adjustments.is_neutral() {
             return PreviewRenderer::RenderImageSync;
         }
@@ -470,6 +536,9 @@ impl GradientBuilder {
     }
 
     pub(super) fn uses_render_preview(&self, cx: &Context<Self>) -> bool {
+        if self.selected_tab == BuilderTab::Freeform && self.freeform_gpu { return false; }
+        if self.selected_tab == BuilderTab::Mesh && self.mesh_shader_enabled { return false; }
+        if self.selected_tab == BuilderTab::Gradients && self.preview_renderer.is_shader() { return false; }
         if self.selected_tab != BuilderTab::Gradients || !self.image_adjustments.is_neutral() {
             return true;
         }
@@ -487,6 +556,8 @@ impl GradientBuilder {
             return;
         }
         self.active_preview_strategy = match (self.gradient_type, stop_count, self.effective_preview_renderer()) {
+            (_, _, PreviewRenderer::ShaderPaint) => "shader paint",
+            (_, _, PreviewRenderer::ShaderBrush) => "shader brush",
             (_, 0, _) => "empty",
             (_, 1, _) => "solid",
             (GradientType::Linear, _, PreviewRenderer::Quads) => "quads",
@@ -579,6 +650,9 @@ impl GradientBuilder {
                     self.spread_percent,
                     self.freeform_hsl,
                     &super::super::paint::FieldShape {
+                        mixing: self.freeform_mixing,
+                        background_weight: self.field_background_weight,
+                        point_transforms: &self.point_transforms,
                         point_spreads: &self.point_spreads,
                         softness_percent: self.softness_percent,
                     },
@@ -638,6 +712,9 @@ impl GradientBuilder {
                 self.spread_percent,
                 self.freeform_hsl,
                 &super::super::paint::FieldShape {
+                    mixing: self.freeform_mixing,
+                    background_weight: self.field_background_weight,
+                    point_transforms: &self.point_transforms,
                     point_spreads: &self.point_spreads,
                     softness_percent: self.softness_percent,
                 },
@@ -705,6 +782,7 @@ impl GradientBuilder {
         }
         self.sync_visibility_button(cx);
         self.active_mesh_drag = None;
+        self.active_field_drag = None;
         self.preview_image_cache = None;
         let _ = self.ensure_preview_image_cache(self.preview_size, cx);
         cx.notify();
@@ -714,12 +792,17 @@ impl GradientBuilder {
         self.selected_mesh_point = Some(point_index);
         self.sync_point_spread(cx);
         self.mesh_color_target = MeshColorTarget::Point(point_index);
+        self.active_field_drag = None;
         self.active_mesh_drag = Some(point_index);
         self.color_picker_open = false;
         cx.notify();
     }
 
     pub(super) fn handle_mesh_drag_move(&mut self, position: gpui::Point<Pixels>, cx: &mut Context<Self>) {
+        if self.active_field_drag.is_some() {
+            self.drag_field_handle(position, cx);
+            return;
+        }
         let Some(point_index) = self.active_mesh_drag else {
             return;
         };
@@ -748,7 +831,8 @@ impl GradientBuilder {
     }
 
     pub(super) fn finish_mesh_drag(&mut self, cx: &mut Context<Self>) {
-        if self.active_mesh_drag.take().is_some() {
+        let field_dragged = self.active_field_drag.take().is_some();
+        if self.active_mesh_drag.take().is_some() || field_dragged {
             cx.notify();
         }
     }

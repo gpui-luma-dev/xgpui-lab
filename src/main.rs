@@ -11,6 +11,7 @@ mod compositions;
 mod extension_pane;
 mod gamut;
 mod color_lab;
+mod color_demos;
 mod media_lab;
 mod parley_lab;
 mod svg_lab;

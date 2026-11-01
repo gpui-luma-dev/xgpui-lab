@@ -79,6 +79,7 @@ fn run_with_output(backend: &str, frames: usize, output: Option<std::path::PathB
     Ok(())
 }
 struct NativeText {
+    look: Arc<Look>,
     paragraph: Entity<paragraph::ParagraphLab>,
     scroll: Entity<workload::ScrollLab>,
     buttons: Vec<Entity<Button>>,
@@ -122,6 +123,7 @@ impl NativeText {
             })
             .collect();
         Self {
+            look,
             paragraph,
             scroll,
             buttons,
@@ -140,8 +142,8 @@ impl Render for NativeText {
             .gap_3()
             .p_3()
             .font_family("IBM Plex Sans")
-            .bg(rgb(0x111827))
-            .text_color(rgb(0xeff4fc))
+            .bg(self.look.chrome().content_background)
+            .text_color(self.look.chrome().body_text)
             .child(format!("{} backend · real GPUI shaping / glyph atlas · independent process", self.backend))
             .child(div().flex().gap_3().children(self.buttons.clone()));
         match self.active {

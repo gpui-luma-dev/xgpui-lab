@@ -43,8 +43,8 @@ pub fn paint_gradient_preview(
             paint_linear_gradient_preview(window, bounds, stops, rotation_deg, corner_radii, allow_native_two_stop);
         }
         GradientType::Radial => paint_rasterized_radial_gradient_preview(window, bounds, stops, corner_radii),
-        GradientType::Angular => {
-            paint_rasterized_angular_gradient_preview(window, bounds, stops, rotation_deg, corner_radii);
+        GradientType::Conic => {
+            paint_rasterized_conic_gradient_preview(window, bounds, stops, rotation_deg, corner_radii);
         }
     }
 }
@@ -58,7 +58,7 @@ pub fn rasterize_gradient_preview(
     match gradient_type {
         GradientType::Linear => rasterize_linear_gradient_preview(size, stops, rotation_deg),
         GradientType::Radial => rasterize_radial_gradient_preview(size, stops),
-        GradientType::Angular => rasterize_angular_gradient_preview(size, stops, rotation_deg),
+        GradientType::Conic => rasterize_conic_gradient_preview(size, stops, rotation_deg),
     }
 }
 
@@ -397,7 +397,7 @@ fn rasterize_radial_gradient_preview(
     })
 }
 
-fn rasterize_angular_gradient_preview(
+fn rasterize_conic_gradient_preview(
     size: gpui::Size<Pixels>,
     stops: &[(f32, Hsla)],
     rotation_deg: f32,
@@ -479,7 +479,7 @@ fn paint_rasterized_radial_gradient_preview(
     });
 }
 
-fn paint_rasterized_angular_gradient_preview(
+fn paint_rasterized_conic_gradient_preview(
     window: &mut Window,
     bounds: Bounds<Pixels>,
     stops: &[(f32, Hsla)],

@@ -31,6 +31,7 @@ impl ColorFieldList {
         selected: Option<u64>,
         id: &'static str,
         chrome: gpui_luma::theme::LumaChrome,
+        interaction: crate::theme::InteractionColors,
         window: &mut Window,
         cx: &mut Context<GradientBuilder>,
         on_input: InputHandler,
@@ -83,7 +84,7 @@ impl ColorFieldList {
                 .rounded(px(4.0))
                 .border_1()
                 .border_color(if focus_visible && state.active {
-                    chrome.body_text
+                    interaction.focus_border
                 } else {
                     chrome.panel_background
                 })
@@ -137,6 +138,11 @@ impl GradientBuilder {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Clicking the canvas endpoint is outside this list. Its deferred clear
+        // must not discard the selected point while that endpoint owns the drag.
+        if self.active_field_drag.is_some() && matches!(input, ListBoxInput::ClearSelection) {
+            return;
+        }
         let update = self.point_list.state.apply(input);
         for event in update.events {
             match event {

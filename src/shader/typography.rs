@@ -1,6 +1,7 @@
 //! Shared native/browser acceptance demo for issue #28's static and motion milestones.
 use gpui::{prelude::*, *};
 use std::{sync::Arc, time::Instant};
+use crate::theme::ColorVizLookExt;
 use gpui_luma::{prelude::HasPresenter, controls::button::Button};
 use gpui_luma_look_radix::{self as radix, Look};
 use xgpui_shader::typography::{KineticEffect, SelectableText, TextShadow};
@@ -37,6 +38,7 @@ const SAMPLES: [(&str, &str, &str); 4] = [
     ),
 ];
 pub struct TypographyDemo {
+    look: Arc<Look>,
     buttons: Vec<(Action, String, Entity<Button>)>,
     choices: Vec<(Action, crate::lab_controls::Choice)>,
     focus_pending: bool,
@@ -68,6 +70,7 @@ impl TypographyDemo {
         let mut demo = Self {
             buttons: Self::make_buttons(look.clone(), cx),
             choices: Self::make_choices(&look, cx),
+            look,
             focus_pending: false,
             samples,
             active: 0,
@@ -227,20 +230,21 @@ impl Render for TypographyDemo {
             text.selected_text().to_owned().into()
         };
         let count = text.selected_text().chars().count();
-        let background = if self.light { 0xf1f3ed } else { 0x0c1422 };
-        let surface = if self.light { 0xffffff } else { 0x131f30 };
-        let foreground = if self.light { 0x142238 } else { 0xeaf1f6 };
-        let muted = if self.light { 0x50617a } else { 0x9fb0c5 };
+        let chrome = self.look.chrome();
+        let background = chrome.content_background;
+        let surface = chrome.panel_background;
+        let foreground = chrome.body_text;
+        let muted = chrome.muted_text;
         div().id("typography-demo").size_full().overflow_y_scroll()
-            .bg(rgb(background)).text_color(rgb(foreground)).font_family("IBM Plex Sans")
+            .bg(background).text_color(foreground).font_family("IBM Plex Sans")
             .child(div().max_w(px(1040.)).mx_auto().p_8().flex().flex_col().gap_6()
                 .child(div().flex().justify_between().items_center()
-                    .child(div().text_size(px(12.)).text_color(rgb(0x36b8a7)).child("TYPE / 04     •     LIGHT, COLOUR & MEANING"))
-                    .child(div().text_size(px(12.)).text_color(rgb(muted)).child("xgpui-shader / issue #28")))
-                .child(div().text_size(px(12.)).text_color(rgb(muted)).child("SDR preview for glyph glow and shadow · previous color presentation restored on exit"))
+                    .child(div().text_size(px(12.)).text_color(chrome.muted_text).child("TYPE / 04     •     LIGHT, COLOUR & MEANING"))
+                    .child(div().text_size(px(12.)).text_color(muted).child("xgpui-shader / issue #28")))
+                .child(div().text_size(px(12.)).text_color(muted).child("SDR preview for glyph glow and shadow · previous color presentation restored on exit"))
                 .child(div().flex().flex_col().gap_2()
                     .child(div().text_size(px(42.)).line_height(px(50.)).child("Bright ideas. Real words."))
-                    .child(div().text_size(px(16.)).line_height(px(25.)).text_color(rgb(muted))
+                    .child(div().text_size(px(16.)).line_height(px(25.)).text_color(muted)
                         .child("Only the painted glyphs move or disappear. Select across the original line, then copy: the source stays complete.")))
                 .child(div().flex().flex_wrap().gap_2().children(SAMPLES.iter().enumerate().map(|(index, (_label, _, _))| {
                     self.button(Action::Sample(index))
@@ -259,7 +263,7 @@ impl Render for TypographyDemo {
                             .child(self.button(Action::Seed))
                             .child(self.button(Action::Frame)))
                         .child(self.button(Action::Reduced)))
-                    .child(div().text_size(px(12.)).text_color(rgb(muted)).child(if reduced {
+                    .child(div().text_size(px(12.)).text_color(muted).child(if reduced {
                         "Reduced motion shows the complete static source and stops animation requests.".to_owned()
                     } else if self.motion == MotionMode::Scramble {
                         format!("Decoded: {:.0}% · seed {} / frame {} · spaces and emoji stay original. Pause or step to inspect.", self.progress * 100., self.seed, self.phase.floor() as u64)
@@ -273,15 +277,15 @@ impl Render for TypographyDemo {
                         .child(self.button(Action::Fill))
                         .child(self.button(Action::Shadow))
                         .child(self.button(Action::Softness)))
-                    .child(div().text_size(px(12.)).text_color(rgb(muted)).child("Gradient fill and a glyph-only halo. Selection stays sharp; emoji keep their original colors.")))
-                .child(div().p_6().rounded_xl().bg(rgb(surface)).border_1().border_color(rgb(0x42546b)).flex().flex_col().gap_4()
-                    .child(div().flex().justify_between().flex_wrap().gap_2().text_size(px(12.)).text_color(rgb(muted))
+                    .child(div().text_size(px(12.)).text_color(muted).child("Gradient fill and a glyph-only halo. Selection stays sharp; emoji keep their original colors.")))
+                .child(div().p_6().rounded_xl().bg(surface).border_1().border_color(chrome.border).flex().flex_col().gap_4()
+                    .child(div().flex().justify_between().flex_wrap().gap_2().text_size(px(12.)).text_color(muted)
                         .child("VISUAL LAYER  /  CANONICAL SELECTION")
                         .child(if self.narrow { "320 px viewport • horizontal overflow" } else { "Fluid viewport • resize the window" }))
                     .child(div().id("typography-surface").debug_selector(|| "typography-surface".into()).w(if self.narrow { Length::from(px(320.)) } else { Length::from(relative(1.)) }).max_w_full()
                         .text_size(px(if self.large { 36. } else { 27. })).line_height(px(if self.large { 52. } else { 42. }))
                         .child(self.samples[self.active].clone()))
-                    .child(div().text_size(px(13.)).line_height(px(21.)).text_color(rgb(muted)).child(SAMPLES[self.active].2))
+                    .child(div().text_size(px(13.)).line_height(px(21.)).text_color(muted).child(SAMPLES[self.active].2))
                     .child(div().flex().flex_wrap().gap_2()
                         .child(self.button(Action::SelectAll)
                             )
@@ -293,15 +297,15 @@ impl Render for TypographyDemo {
                             )
                         .child(self.button(Action::Theme)
                             ))
-                    .child(div().id("copy-status").role(Role::Status).text_size(px(12.)).text_color(rgb(muted)).child(self.status.clone())))
-                .child(div().flex().flex_col().gap_3().p_5().rounded_lg().bg(rgb(surface))
-                    .child(div().flex().justify_between().text_size(px(12.)).text_color(rgb(muted))
+                    .child(div().id("copy-status").role(Role::Status).text_size(px(12.)).text_color(muted).child(self.status.clone())))
+                .child(div().flex().flex_col().gap_3().p_5().rounded_lg().bg(surface)
+                    .child(div().flex().justify_between().text_size(px(12.)).text_color(muted)
                         .child("LOGICAL LAYER  /  ORIGINAL SOURCE")
                         .child(format!("UTF-8 {}..{}  /  {} Unicode scalars", range.start, range.end, count)))
-                    .child(div().text_size(px(15.)).line_height(px(24.)).text_color(rgb(muted)).child(SAMPLES[self.active].1))
+                    .child(div().text_size(px(15.)).line_height(px(24.)).text_color(muted).child(SAMPLES[self.active].1))
                     .child(div().text_size(px(20.)).line_height(px(30.)).child(selected))
-                    .child(div().text_size(px(12.)).text_color(rgb(muted)).child("The inspector and clipboard read the original string, even where glyphs are hidden or displaced.")))
-                .child(div().flex().flex_col().gap_2().text_size(px(13.)).line_height(px(22.)).text_color(rgb(muted))
+                    .child(div().text_size(px(12.)).text_color(muted).child("The inspector and clipboard read the original string, even where glyphs are hidden or displaced.")))
+                .child(div().flex().flex_col().gap_2().text_size(px(13.)).line_height(px(22.)).text_color(muted)
                     .child("TRY IT  /  Tab to focus · Shift + arrows to select · Home / End · Cmd or Ctrl + A / C · double-click a word · triple-click the line")
                     .child(if cfg!(target_family = "wasm") { "ACCESSIBILITY  /  The web platform has no canvas accessibility bridge yet. Use the native demo to inspect read-only text and selection semantics." } else { "ACCESSIBILITY  /  Read-only text field with the full source, a text run and selection endpoints. Motion does not change the accessible source or selection." })
                     .child("SCOPE  /  Single-line LTR text. Wrapping, bidirectional selection and rich text editing remain outside this milestone.")))
@@ -440,7 +444,7 @@ impl TypographyDemo {
                 Action::Copy => "Copy selection ↗".into(),
                 Action::Width => format!("Width: {}", if self.narrow { "narrow" } else { "fluid" }),
                 Action::Size => format!("Type: {} px", if self.large { 36 } else { 27 }),
-                Action::Theme => format!("Theme: {}", if self.light { "light" } else { "ink" }),
+                Action::Theme => format!("Sample colors: {}", if self.light { "light" } else { "ink" }),
             };
             if *previous != label {
                 *previous = label.clone();

@@ -299,7 +299,6 @@ fn wire_picker_events(
 mod tests {
     use super::*;
     use gpui::{Focusable, TestAppContext};
-    use gpui_luma::controls::tabs::TabsEvent;
     use super::super::{ColorCompositions, EXAMPLES};
 
     #[test]
@@ -314,12 +313,8 @@ mod tests {
             ColorCompositions::new(Arc::new(Look::built_in()), cx)
         });
         cx.run_until_parked();
-        let (picker, tabs) = cx.update(|_, cx| {
-            let gallery = gallery.read(cx);
-            (
-                gallery.pages[0].clone().downcast::<ColorPickerControlExposition>().expect("picker page"),
-                gallery.tabs.clone(),
-            )
+        let picker = cx.update(|_, cx| {
+            gallery.read(cx).pages[0].clone().downcast::<ColorPickerControlExposition>().expect("picker page")
         });
         let (state, events, hue_slider, before) = cx.update(|window, cx| {
             let picker = picker.read(cx);
@@ -336,18 +331,12 @@ mod tests {
         let edited = cx.update(|_, cx| state.read(cx).hsv);
         assert!(edited.h > before, "the copied hue slider must still update the composed picker");
 
-        for (index, (id, label)) in EXAMPLES.iter().enumerate() {
-            tabs.update(cx, |tabs, cx| {
-                tabs.set_active(*id, cx);
-                cx.emit(TabsEvent::Activate { tab_id: (*id).into(), label: (*label).into() });
-            });
+        for (index, (id, _)) in EXAMPLES.iter().enumerate() {
+            gallery.update(cx, |gallery, cx| gallery.activate_page(id, cx));
             cx.run_until_parked();
             cx.update(|_, cx| assert_eq!(gallery.read(cx).active, index));
         }
-        tabs.update(cx, |tabs, cx| {
-            tabs.set_active("picker", cx);
-            cx.emit(TabsEvent::Activate { tab_id: "picker".into(), label: "Color Picker".into() });
-        });
+        gallery.update(cx, |gallery, cx| gallery.activate_page("picker", cx));
         cx.run_until_parked();
         cx.update(|_, cx| {
             assert_eq!(state.read(cx).hsv, edited);

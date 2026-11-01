@@ -4,6 +4,7 @@ use gpui::{
     TextSystem, UniformListScrollHandle, Window, WindowTextSystem, div, prelude::*, px, rgb, uniform_list,
 };
 use std::{hint::black_box, sync::Arc, time::Instant};
+use crate::theme::ColorVizLookExt;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
 const STYLES: [(f32, f32); 4] = [(18., 400.), (24., 400.), (24., 900.), (18., 400.)];
@@ -69,6 +70,7 @@ pub fn measure(text: Arc<TextSystem>, lines: &[SharedString], base: &Font) -> an
 }
 
 pub struct ScrollLab {
+    look: Arc<gpui_luma_look_radix::Look>,
     controls: Vec<gpui::Entity<gpui_luma::controls::button::Button>>,
     pending_start: bool,
     name: String,
@@ -93,6 +95,7 @@ pub struct ScrollLab {
 impl ScrollLab {
     pub fn init_controls(&mut self, look: std::sync::Arc<gpui_luma_look_radix::Look>, cx: &mut Context<Self>) {
         use gpui_luma::prelude::HasPresenter;
+        self.look = look.clone();
         self.controls = ["Run 600 frames", "Pause", "Size 18 / 24", "Weight 400 / 900"]
             .into_iter()
             .enumerate()
@@ -125,6 +128,7 @@ impl ScrollLab {
         let count = lines.len();
         let initial_rss = rss();
         Self {
+            look: crate::theme::default_look(),
             controls: vec![],
             pending_start: false,
             name,
@@ -259,8 +263,8 @@ impl Render for ScrollLab {
             .flex_col()
             .gap_2()
             .p_3()
-            .bg(rgb(0x111827))
-            .text_color(rgb(0xeff4fc))
+            .bg(self.look.chrome().content_background)
+            .text_color(self.look.chrome().body_text)
             .font_family("IBM Plex Sans")
             .text_size(px(12.))
             .child(format!(

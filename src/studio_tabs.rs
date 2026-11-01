@@ -30,7 +30,7 @@ impl TabsTheme for StudioTabsTheme {
         }
         item.indicator = None;
         item.indicator_height = 0.0;
-        item.background = (active || state.hovered || state.focused).then_some(chrome.border);
+        item.background = self.look.interaction_colors().background(active, state);
         item.label_color = if state.disabled {
             chrome.muted_text
         } else if active {

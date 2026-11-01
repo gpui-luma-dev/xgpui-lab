@@ -89,6 +89,7 @@ impl GradientBuilder {
         self.selected_mesh_point = None;
         self.mesh_color_target = MeshColorTarget::Background;
         self.active_mesh_drag = None;
+        self.active_field_drag = None;
         self.color_picker_open = false;
         self.sync_point_spread(cx);
         cx.notify();
@@ -122,6 +123,7 @@ impl GradientBuilder {
                 self.mesh_point_ids.push(self.next_point_id);
                 self.next_point_id += 1;
                 self.point_spreads.push(100.0);
+                self.point_transforms.push([0., 1.]);
                 self.selected_mesh_point = Some(self.mesh_points.len() - 1);
             }
             1 if self.mesh_points.len() > 1 => {
@@ -129,6 +131,7 @@ impl GradientBuilder {
                     self.mesh_points.remove(index);
                     self.mesh_point_ids.remove(index);
                     self.point_spreads.remove(index);
+                    self.point_transforms.remove(index);
                     for (index, point) in self.mesh_points.iter_mut().enumerate() {
                         point.col = index as u8;
                     }
@@ -154,9 +157,25 @@ impl GradientBuilder {
         self.mesh_color_target =
             self.selected_mesh_point.map(MeshColorTarget::Point).unwrap_or(MeshColorTarget::Background);
         self.active_mesh_drag = None;
+        self.active_field_drag = None;
         self.color_picker_open = false;
         self.mesh_swatch_bounds.clear();
         let _ = self.ensure_preview_image_cache(self.preview_size, cx);
         cx.notify();
+    }
+}
+
+// Smooth reversals at 50% and 100%; the speed control sets the phase rate.
+pub(super) fn animated_spread(phase: f32) -> f32 { 75. + 25. * phase.cos() }
+#[cfg(test)]
+mod animation_tests {
+    use super::*;
+    #[test]
+    fn spread_animation_reverses_at_limits() {
+        assert_eq!(animated_spread(0.),100.);
+        assert_eq!(animated_spread(std::f32::consts::PI),50.);
+        assert_eq!(animated_spread(std::f32::consts::TAU),100.);
+        assert!((animated_spread(std::f32::consts::FRAC_PI_2)-75.).abs()<0.00001);
+        for step in 0..1000 {assert!((50. ..=100.).contains(&animated_spread(step as f32*0.01)));}
     }
 }

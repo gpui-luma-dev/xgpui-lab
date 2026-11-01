@@ -2090,7 +2090,9 @@ dependencies = [
 
 [[package]]
 name = "gpui-luma"
-version = "0.2.4"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c84971f4610f5c4ded6f742c1dfcfd38ff8bc308229e25ccb67b4714f819e61c"
 dependencies = [
  "anyhow",
  "fasteval",
@@ -2106,7 +2108,7 @@ dependencies = [
 
 [[package]]
 name = "gpui-luma-color"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "gpui-luma",
@@ -2119,7 +2121,9 @@ dependencies = [
 
 [[package]]
 name = "gpui-luma-look-radix"
-version = "0.2.4"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8659706f341df7f24c6a70cec4db4dc69309346642eb844397e56cbc769af9f"
 dependencies = [
  "anyhow",
  "gpui-luma",
@@ -6740,7 +6744,9 @@ checksum = "bec9e4a500ca8864c5b47b8b482a73d62e4237670e5b5f1d6b9e3cae50f28f2b"
 
 [[package]]
 name = "xgpui"
-version = "1.1.0"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0fd1b4c5020119f23df04ad2a49d68d603d58b8e0fc0e79f3aa920184d9b68d"
 dependencies = [
  "accesskit",
  "anyhow",
@@ -6808,7 +6814,9 @@ dependencies = [
 
 [[package]]
 name = "xgpui-apple"
-version = "2.0.0"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6f1e2089360d38491d1d860532b1101c7dae481a305015818e5826c0d309ad5"
 dependencies = [
  "anyhow",
  "async-task",
@@ -6848,14 +6856,18 @@ dependencies = [
 
 [[package]]
 name = "xgpui-color"
-version = "0.2.1"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aeaedb17e987461ac2f3c8cbcb3c2124854f4a31a0e8da21944073ab081dcbdf"
 dependencies = [
  "moxcms",
 ]
 
 [[package]]
 name = "xgpui-gamut"
-version = "0.2.1"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc146d1764d018d7d9f51ffeb72686a35e230c8341c35369fd9c17d2b695c262"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -6884,6 +6896,7 @@ dependencies = [
  "objc2 0.6.5",
  "objc2-core-foundation",
  "objc2-core-video",
+ "objc2-foundation 0.3.2",
  "palette",
  "parley",
  "serde",
@@ -6910,7 +6923,9 @@ dependencies = [
 
 [[package]]
 name = "xgpui-linux"
-version = "1.0.1"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9a8c6836e9963ce052740020004efaa9e307829dfd2e22f450fc1d9157ded40"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -6953,7 +6968,7 @@ dependencies = [
 
 [[package]]
 name = "xgpui-macos"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "accesskit",
  "accesskit_macos",
@@ -6975,6 +6990,7 @@ dependencies = [
  "objc2-app-kit 0.3.2",
  "objc2-core-video",
  "objc2-foundation 0.3.2",
+ "objc2-quartz-core 0.3.2",
  "objc2-user-notifications",
  "parking_lot",
  "raw-window-handle",
@@ -6990,6 +7006,8 @@ dependencies = [
 [[package]]
 name = "xgpui-macros"
 version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75d13351cd0cb51022c0c18703a1b3c30c281a8e3f2512b3d558b6fed7db4373"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -6999,7 +7017,9 @@ dependencies = [
 
 [[package]]
 name = "xgpui-media"
-version = "0.3.0"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f256179f9a88947fe20cb1cb75d25e24e638869578c3d909a1e8d9d75e411c46"
 dependencies = [
  "anyhow",
  "half",
@@ -7016,7 +7036,9 @@ dependencies = [
 
 [[package]]
 name = "xgpui-parley"
-version = "0.2.1"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5aa255a63330952d875796e0cbeed271655591831c2706633365261ed4e1b0b1"
 dependencies = [
  "anyhow",
  "parley",
@@ -7027,7 +7049,9 @@ dependencies = [
 
 [[package]]
 name = "xgpui-platform"
-version = "1.0.1"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34b72794ab57b320da144f9732a492d10c6ec07dc5ab5d32702a35e00494063e"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
@@ -7041,7 +7065,9 @@ dependencies = [
 
 [[package]]
 name = "xgpui-shader"
-version = "0.2.1"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "967c7d218278613366f58047feedb0e38fb1113caffc0d8b0fb502bdf9a69e6a"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -7062,7 +7088,9 @@ dependencies = [
 
 [[package]]
 name = "xgpui-svg"
-version = "0.2.1"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "efe62f63f2cfd3a209f749297ac261db1fb67b3da7a1f15fa7a4b585be15b5cd"
 dependencies = [
  "anyhow",
  "web-time",
@@ -7071,7 +7099,9 @@ dependencies = [
 
 [[package]]
 name = "xgpui-web"
-version = "1.0.1"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c58ab6b5dfdd2db52131e9f02667c621a104f7e3bc64bd38d608e7c54fbe5fe"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -7099,7 +7129,9 @@ dependencies = [
 
 [[package]]
 name = "xgpui-wgpu"
-version = "1.0.1"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e0796a1d2a21ff3fc57f149e61cee360e939e5e7da11b4167d404e8c1bfd77d"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -7125,7 +7157,9 @@ dependencies = [
 
 [[package]]
 name = "xgpui-windows"
-version = "1.0.1"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6cd54d5639ff1643a8a29e1908f02e65bbbfedca1c0c561ba432f9e4c071d7fc"
 dependencies = [
  "accesskit",
  "accesskit_windows",
@@ -7154,15 +7188,17 @@ dependencies = [
 [[package]]
 name = "xim-ctext"
 version = "0.3.0"
-source = "git+https://github.com/zed-industries/xim-rs.git?rev=16f35a2c881b815a2b6cdfd6687988e84f8447d8#16f35a2c881b815a2b6cdfd6687988e84f8447d8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ac61a7062c40f3c37b6e82eeeef835d5cc7824b632a72784a89b3963c33284c"
 dependencies = [
  "encoding_rs",
 ]
 
 [[package]]
 name = "xim-parser"
-version = "0.2.1"
-source = "git+https://github.com/zed-industries/xim-rs.git?rev=16f35a2c881b815a2b6cdfd6687988e84f8447d8#16f35a2c881b815a2b6cdfd6687988e84f8447d8"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5dcee45f89572d5a65180af3a84e7ddb24f5ea690a6d3aa9de231281544dd7b7"
 dependencies = [
  "bitflags 2.13.2",
 ]
@@ -7390,7 +7426,8 @@ dependencies = [
 [[package]]
 name = "zed-xim"
 version = "0.4.0-zed"
-source = "git+https://github.com/zed-industries/xim-rs.git?rev=16f35a2c881b815a2b6cdfd6687988e84f8447d8#16f35a2c881b815a2b6cdfd6687988e84f8447d8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c0b46ed118eba34d9ba53d94ddc0b665e0e06a2cf874cfa2dd5dec278148642"
 dependencies = [
  "ahash",
  "hashbrown 0.14.5",

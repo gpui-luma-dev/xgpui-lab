@@ -45,21 +45,19 @@ Captured effects currently require SDR in xgpui. The app temporarily switches pr
 
 ## Local checkout setup
 
-This snapshot intentionally uses sibling source checkouts, including Luma. It is not a standalone crates.io-based build:
+xgpui is fetched directly from GitHub at commit `d3990f70515c6a3918ebb656059c71d147908837` (the latest `main` when updated). All framework, backend, and extension dependencies use that same revision. A sibling xgpui checkout is no longer needed to build the app.
+
+Luma currently uses the sibling `../gpui-luma` checkout. Its workspace dependencies must use the same GitHub xgpui revision as this app; the corresponding local Luma update must be committed and pushed before a fresh checkout or CI can reproduce this setup. The Luma revision in `.github/dependencies.json` must then be updated to that commit.
 
 ```text
 parent/
   xgpui-lab/
-  xgpui/
   gpui-luma/
 ```
 
-Verified source references:
+`Cargo.lock` records the resolved dependencies. Keep `--locked` in normal build/run commands. When intentionally updating xgpui, update its revision in both repositories and `.github/dependencies.json`, regenerate both lockfiles with `cargo check`, then verify the app with `cargo build --locked --release`. Updating the sibling xgpui checkout alone does not change this app's dependency.
 
-- xgpui: `9e6a732110a1fb1cd6b7ff12bf306d95ceb1fb12` on `codex/objc2-metal-interfaces`.
-- gpui-luma: `0374b85bac8c074e1d01ea983db1a9156a9cf9a2` on `main`.
-
-Cargo path dependencies and patches select the sibling xgpui framework and backend crates. Supporting crates resolve from the matching published `gpui-unofficial` release. Sample fonts, shader fixtures and the default SVG corpus live in `assets/samples/` and are embedded. Keep the dependency repositories present when compiling. Built applications do not read them at runtime. Branch names are informational; Cargo does not enforce the checked-out branch or revision.
+Sample fonts, shader fixtures and the default SVG corpus live in `assets/samples/` and are embedded. Built applications do not read dependency repositories at runtime.
 
 The Rust stable toolchain, rustfmt, and Clippy are selected by `rust-toolchain.toml`. Native verification has been performed on macOS; other platform dependencies are present but cross-platform support is not yet verified. The macOS renderer also needs the usual Xcode/Metal build tools.
 
@@ -96,7 +94,7 @@ separate manual workflow documented below.
 CI checks out three sibling folders under the runner workspace: `app/`
 (this repository), `xgpui/`, and `gpui-luma/`. Exact dependency commits live in
 `.github/dependencies.json`. No crates.io publication of xgpui is required.
-Luma 0.2.4 uses xgpui 1.0.0 directly. Cargo patches keep Luma and the extension labs on the same sibling xgpui framework and backends; no compatibility patch is needed.
+Cargo fetches xgpui from the pinned GitHub revision; the sibling xgpui checkout is retained for source coverage checks. CI requires the matching Luma dependency change to be pushed and its commit recorded in `.github/dependencies.json`.
 
 The reusable `.github/actions/prepare-dependencies` action expects the app at
 `app/` and is also used by the manual Windows app builder.

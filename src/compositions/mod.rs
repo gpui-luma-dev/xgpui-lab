@@ -16,11 +16,10 @@ mod template;
 
 use std::sync::Arc;
 
-use gpui::{AnyView, Context, Entity, Render, Subscription, Window, div, prelude::*, px};
+use gpui::{AnyView, Context, Render, Subscription, Window, div, prelude::*, px};
 use gpui_luma::controls::scroll_container::ScrollContainer;
 use gpui_luma::controls::scrollbar::ScrollbarEvent;
-use gpui_luma::controls::tabs::{Tabs, TabsEvent, TabsItem};
-use gpui_luma_look_radix::{self as radix, Look};
+use gpui_luma_look_radix::Look;
 
 use color_harmonies::ColorHarmoniesControlExposition;
 use color_hsv_plane::ColorHsvPlaneControlExposition;
@@ -40,7 +39,6 @@ const EXAMPLES: [(&str, &str); 6] = [
 
 pub struct ColorCompositions {
     look: Arc<Look>,
-    tabs: Entity<Tabs>,
     pages: [AnyView; 6],
     scrolls: [ScrollContainer; 6],
     active: usize,
@@ -48,13 +46,14 @@ pub struct ColorCompositions {
 }
 
 impl ColorCompositions {
+    pub(crate) fn activate_page(&mut self, page: &str, cx: &mut Context<Self>) {
+        if let Some(index) = EXAMPLES.iter().position(|(id, _)| *id == page) {
+            self.active = index;
+            cx.notify();
+        }
+    }
+
     pub fn new(look: Arc<Look>, cx: &mut Context<Self>) -> Self {
-        let tabs = radix::Tabs::new("color-viz-composition-tabs")
-            .look(look.as_ref())
-            .items(EXAMPLES.map(|(id, label)| TabsItem::new(id).label(label)))
-            .size(radix::TabsSize::One)
-            .active("picker")
-            .spawn(cx);
         // Retain every example so switching pages preserves edits and event history.
         let pages = [
             cx.new(|cx| ColorPickerControlExposition::new(cx, look.clone())).into(),
@@ -69,14 +68,7 @@ impl ColorCompositions {
                 .overlay(true)
                 .auto_hide(true)
         });
-        let mut subscriptions = vec![cx.subscribe(&tabs, |this, _, event: &TabsEvent, cx| {
-            if let TabsEvent::Activate { tab_id, .. } = event
-                && let Some(index) = EXAMPLES.iter().position(|(id, _)| *id == tab_id.as_ref())
-            {
-                this.active = index;
-                cx.notify();
-            }
-        })];
+        let mut subscriptions = Vec::new();
         for (index, scroll) in scrolls.iter().enumerate() {
             subscriptions.push(cx.subscribe(&scroll.scrollbar(), move |this, _, event: &ScrollbarEvent, cx| {
                 if let ScrollbarEvent::Change { value } = event {
@@ -84,7 +76,7 @@ impl ColorCompositions {
                 }
             }));
         }
-        Self { look, tabs, pages, scrolls, active: 0, _subscriptions: subscriptions }
+        Self { look, pages, scrolls, active: 0, _subscriptions: subscriptions }
     }
 }
 
@@ -99,17 +91,6 @@ impl Render for ColorCompositions {
             .flex_col()
             .text_color(chrome.body_text)
             .bg(chrome.content_background)
-            .child(
-                div()
-                    .w_full()
-                    .flex_shrink_0()
-                    .px(px(16.0))
-                    .py(px(6.0))
-                    .border_b_1()
-                    .border_color(chrome.border)
-                    .bg(chrome.panel_background)
-                    .child(self.tabs.clone()),
-            )
             .child(div().flex_1().min_h_0().child(
                 scroll.render(div().w_full().pt(px(16.0)).child(self.pages[self.active].clone()).into_any_element()),
             ))

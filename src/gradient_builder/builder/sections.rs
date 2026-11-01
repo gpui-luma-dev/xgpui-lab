@@ -78,7 +78,7 @@ impl GradientBuilder {
                     };
                     let trigger = AccordionTrigger::custom(move |_, _| {
                         let chrome = look.chrome();
-                        let label_color = gpui::Hsla { a: chrome.muted_text.a * 0.75, ..chrome.muted_text };
+                        let label_color = chrome.muted_text;
                         div()
                             .debug_selector({
                                 let selector = selector.clone();
@@ -205,12 +205,28 @@ impl GradientBuilder {
                             .child(div().flex_1().min_w_0().child(form_field!("Type", chrome; type_selector)))
                             .child(div().flex_1().min_w_0().child(form_field!("Renderer", chrome; renderer_selector))),
                     )
+                    .child(self.p3_switch.clone())
+                    .when(self.preview_p3, |this| {
+                        this.child(div().text_size(px(11.0)).child(if super::p3::available(window) {
+                            "Display P3 · native shader"
+                        } else {
+                            "Display P3 unavailable · sRGB fallback"
+                        }))
+                    })
                     .child(form_field!("Aspect", chrome; self.mesh_aspect_ratio_selector.clone()))
                     .when(self.gradient_type != GradientType::Radial, |this| {
                         this.child(compact_slider_row(
                             "Angle",
                             rotation_slider,
                             format!("{rotation_deg:.0}°"),
+                            info_label_style,
+                            chrome,
+                        ))
+                        .child(self.animate_angle_button.clone())
+                        .child(compact_slider_row(
+                            "Speed",
+                            self.angle_speed_slider.clone(),
+                            format!("{:.0}°/s", self.angle_speed),
                             info_label_style,
                             chrome,
                         ))
@@ -248,6 +264,38 @@ impl GradientBuilder {
                                     .child(form_field!("Aspect", chrome; mesh_aspect_ratio_selector)),
                             ),
                     )
+                    .when(!freeform, |panel| panel
+                        .child(div().flex().items_center().gap_2()
+                            .child(self.mesh_cycle_button.clone())
+                            .child(div().text_size(px(11.)).child(format!("{} · {}/5",
+                                super::mesh::MESH_PALETTE_NAMES[self.mesh_palette], self.mesh_palette + 1))))
+                        .child(self.mesh_palette_animate_button.clone())
+                        .child(compact_slider_row(
+                            "Speed", self.mesh_palette_speed_slider.clone(),
+                            format!("{:.1}/s", self.mesh_palette_speed), info_label_style, chrome,
+                        ))
+                        .child(form_field!("Renderer", chrome; self.mesh_renderer_selector.clone()))
+                        .child(self.mesh_p3_switch.clone())
+                        .when(self.mesh_p3, |panel| panel.child(div().text_size(px(10.)).child(
+                            if cfg!(target_os = "macos") && super::p3::available(window) {
+                                "Display P3 · native mesh shader"
+                            } else { "Display P3 unavailable · sRGB fallback" }
+                        )))
+                        .when(self.mesh_shader_enabled, |panel| panel.child(div().text_size(px(10.)).child(
+                            "Native Hermite mesh · opaque colors · interpolation differs from CPU Coons"
+                        ))))
+                    .when(freeform, |panel| panel
+                        .child(form_field!("Renderer", chrome; self.freeform_renderer_selector.clone()))
+                        .child(form_field!("Mixing", chrome; self.freeform_mixing_selector.clone()))
+                        .when(self.freeform_mixing == super::super::color_field::Mixing::Normalized, |panel| panel.child(compact_slider_row(
+                            "Base weight", self.field_background_slider.clone(), format!("{:.2}", self.field_background_weight), info_label_style, chrome,
+                        )))
+                        .child(self.freeform_p3_switch.clone())
+                        .when(self.freeform_p3, |panel| panel.child(div().text_size(px(10.)).child(
+                            if cfg!(target_os = "macos") && super::p3::available(window) {
+                                if self.freeform_gpu { "Display P3 · GPU field" } else { "Display P3 · CPU field" }
+                            } else { "Display P3 unavailable · sRGB fallback" }
+                        ))))
                     .child(render_mesh_background_row(mesh_background, info_label_style, chrome, builder.clone()));
                 panel.into_any_element()
             }
@@ -269,6 +317,7 @@ impl GradientBuilder {
                                 self.look.typography_scale(TextSize::Sm),
                                 self.look.typography_scale(TextSize::Sm),
                                 chrome,
+                                self.look.interaction_colors(),
                                 cx.entity(),
                             )
                             .into_any_element(),
@@ -280,6 +329,7 @@ impl GradientBuilder {
                     self.selected_stop.map(|id| id.as_u64()),
                     "color-viz-stop-list",
                     chrome,
+                    self.look.interaction_colors(),
                     window,
                     cx,
                     GradientBuilder::handle_stop_list_input,
@@ -326,7 +376,7 @@ impl GradientBuilder {
                                 point,
                                 selected,
                                 info_label_style,
-                                chrome,
+                                &self.look,
                                 cx.entity(),
                             ))
                             .when(self.selected_tab == BuilderTab::Freeform && selected, |row| {
@@ -351,6 +401,7 @@ impl GradientBuilder {
                     self.selected_mesh_point.map(|index| self.mesh_point_ids[index]),
                     "color-viz-point-list",
                     chrome,
+                    self.look.interaction_colors(),
                     window,
                     cx,
                     GradientBuilder::handle_point_list_input,
@@ -363,6 +414,11 @@ impl GradientBuilder {
                 let fields =
                     div().w_full().flex().flex_col().gap_2().bg(chrome.panel_background).when(freeform, |this| {
                         this.child(div().flex().items_center().gap_2().children(freeform_buttons))
+                            .child(self.spread_animate_button.clone())
+                            .child(compact_slider_row(
+                                "Speed", self.spread_speed_slider.clone(),
+                                format!("{:.2}/s", self.spread_speed), info_label_style, chrome,
+                            ))
                             .child(compact_slider_row(
                                 "Spread · All",
                                 spread_slider,
@@ -418,6 +474,8 @@ impl GradientBuilder {
                             PreviewRenderer::Quads => "quads",
                             PreviewRenderer::RenderImageSync => "render (sync)",
                             PreviewRenderer::RenderImageAsync => "render (async)",
+                            PreviewRenderer::ShaderPaint => "shader paint",
+                            PreviewRenderer::ShaderBrush => "shader brush",
                         },
                         info_label_style,
                         info_value_style,

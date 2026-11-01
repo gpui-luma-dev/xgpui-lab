@@ -1,10 +1,23 @@
 use std::sync::Arc;
 use gpui::{Hsla, Pixels, RenderImage, Size};
 use super::MeshPoint;
+use super::super::color_field::{ColorField, FieldPoint, Mixing};
 
 pub struct FieldShape<'a> {
+    pub mixing: Mixing,
+    pub background_weight: f32,
+    pub point_transforms: &'a [[f32; 2]],
     pub point_spreads: &'a [f32],
     pub softness_percent: f32,
+}
+
+fn field_distance(dx: f32, dy: f32, angle: f32, stretch: f32) -> f32 {
+    if stretch == 1. { return dx * dx + dy * dy; }
+    let (sin, cos) = angle.to_radians().sin_cos();
+    let x = cos * dx + sin * dy;
+    let y = -sin * dx + cos * dy;
+    let stretch = stretch.clamp(1. / 9., 9.);
+    x * x / stretch + y * y * stretch
 }
 
 fn field_weight(distance_squared: f32, spread_percent: f32, point_spread: f32, softness_percent: f32) -> f32 {
@@ -37,7 +50,7 @@ fn sample(points: &[MeshPoint], background: Hsla, u: f32, v: f32, spread_percent
         v,
         spread_percent,
         hues.as_deref(),
-        &FieldShape { point_spreads: &[], softness_percent: 100.0 },
+        &FieldShape { mixing: Mixing::Ordered, background_weight: 0.25, point_transforms: &[], point_spreads: &[], softness_percent: 100.0 },
     )
 }
 
@@ -54,7 +67,8 @@ fn sample_with_hues(
     let mut result = background.to_rgb();
     let mut hsl = background;
     for (index, point) in points.iter().enumerate() {
-        let distance_squared = (u - point.u).powi(2) + (v - point.v).powi(2);
+        let [angle, stretch] = shape.point_transforms.get(index).copied().unwrap_or([0., 1.]);
+        let distance_squared = field_distance(u - point.u, v - point.v, angle, stretch);
         let alpha = field_weight(
             distance_squared,
             spread_percent,
@@ -78,6 +92,21 @@ fn sample_with_hues(
     result
 }
 
+/// Keep editor adaptation outside the reusable field primitive.
+pub fn build_color_field(points: &[MeshPoint], background: Hsla, spread: f32, hsl: bool, shape: &FieldShape<'_>) -> ColorField {
+    let rgba = |c: Hsla| { let rgb=c.to_rgb(); [rgb.r,rgb.g,rgb.b,c.a] };
+    let hues=palette_hues(points,background);
+    ColorField {
+        points: points.iter().enumerate().map(|(i,p)| {
+            let [angle,stretch]=shape.point_transforms.get(i).copied().unwrap_or([0.,1.]);
+            FieldPoint {position:[p.u,p.v],color:rgba(p.color),hsl:[hues[i],p.color.s,p.color.l],
+                radius:spread.clamp(10.,150.)/100.*shape.point_spreads.get(i).copied().unwrap_or(100.).clamp(10.,200.)/100.,angle,stretch}
+        }).collect(),
+        background:rgba(background),background_hsl:[background.h,background.s,background.l],softness:shape.softness_percent.clamp(25.,200.)/100.,
+        hsl,mixing:shape.mixing,background_weight:shape.background_weight,
+    }
+}
+
 pub fn rasterize_freeform_preview(
     size: Size<Pixels>,
     points: &[MeshPoint],
@@ -90,9 +119,13 @@ pub fn rasterize_freeform_preview(
     let height = size.height.as_f32().round() as u32;
     let mut pixmap = tiny_skia::Pixmap::new(width, height)?;
     let hues = use_hsl.then(|| palette_hues(points, background));
+    let normalized = (shape.mixing == Mixing::Normalized).then(|| build_color_field(points, background, spread_percent, use_hsl, shape));
     for y in 0..height {
         for x in 0..width {
-            let color = sample_with_hues(
+            let color = if let Some(field) = &normalized {
+                let c=field.sample([(x as f32+0.5)/width as f32,(y as f32+0.5)/height as f32]);
+                gpui::Rgba {r:c[0],g:c[1],b:c[2],a:c[3]}
+            } else { sample_with_hues(
                 points,
                 background,
                 (x as f32 + 0.5) / width as f32,
@@ -100,7 +133,7 @@ pub fn rasterize_freeform_preview(
                 spread_percent,
                 hues.as_deref(),
                 shape,
-            );
+            ) };
             pixmap.pixels_mut()[(y * width + x) as usize] = tiny_skia::PremultipliedColorU8::from_rgba(
                 (color.b * color.a * 255.0).round() as u8,
                 (color.g * color.a * 255.0).round() as u8,
@@ -183,5 +216,46 @@ mod tests {
         );
         point.u = 0.8;
         assert_eq!(sample(&[point], background, 0.8, 0.3, 100.0, false), point.color.to_rgb());
+    }
+}
+
+#[cfg(test)]
+mod transform_tests {
+    use super::*;
+    #[test]
+    fn stretch_rotates_ellipse_and_preserves_area_and_neutral_shape() {
+        assert_eq!(field_distance(0.3, 0.4, 37., 1.), 0.25);
+        let along_x = field_distance(0.4, 0., 0., 4.);
+        let along_y = field_distance(0., 0.4, 0., 4.);
+        assert!(along_x < along_y);
+        assert!(field_distance(0.4, 0., 0., 0.25) > field_distance(0.4, 0., 0., 1.));
+        assert!((field_distance(0.1, 0., 0., 0.25) - 0.04).abs() < 0.00001);
+        assert!((along_x - field_distance(0., 0.4, 90., 4.)).abs() < 0.00001);
+        let radius = 0.2_f32;
+        assert!((field_distance(radius * 2., 0., 0., 4.) - radius.powi(2)).abs() < 0.00001);
+        assert!((field_distance(0., radius / 2., 0., 4.) - radius.powi(2)).abs() < 0.00001);
+    }
+}
+
+#[cfg(test)]
+mod prototype_parity_tests {
+    use super::*;
+    #[test]
+    fn ordered_field_reference_matches_original_editor_algorithm() {
+        let background=gpui::hsla(0.15,0.6,0.3,0.35);
+        let points=vec![
+            MeshPoint {row:0,col:0,u:0.3,v:0.2,color:gpui::hsla(0.8,0.8,0.5,0.6)},
+            MeshPoint {row:0,col:1,u:0.7,v:0.8,color:gpui::hsla(0.4,0.7,0.3,0.9)},
+        ];
+        let shape=FieldShape {mixing:Mixing::Ordered,background_weight:0.25,point_transforms:&[[70.,0.5],[120.,3.]],point_spreads:&[50.,140.],softness_percent:75.};
+        for hsl in [false,true] {
+            let field=build_color_field(&points,background,110.,hsl,&shape);
+            let hues=hsl.then(||palette_hues(&points,background));
+            for y in 0..10 {for x in 0..10 {
+                let uv=[(x as f32+0.5)/10.,(y as f32+0.5)/10.];
+                let original=sample_with_hues(&points,background,uv[0],uv[1],110.,hues.as_deref(),&shape);
+                for (a,b) in field.sample(uv).into_iter().zip([original.r,original.g,original.b,original.a]) {assert!((a-b).abs()<0.00001,"{a} != {b}");}
+            }}
+        }
     }
 }

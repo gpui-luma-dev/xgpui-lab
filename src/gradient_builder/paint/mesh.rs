@@ -663,3 +663,33 @@ fn line_path(x0: f32, y0: f32, x1: f32, y1: f32) -> Option<tiny_skia::Path> {
 fn _paint_mesh_debug_overlay(_window: &mut Window, _bounds: Bounds<Pixels>, _corner_radii: Corners<Pixels>) {
     let _ = px(0.0);
 }
+
+/// Adapt the editor's row/column points and existing geometry tangents to xgpui.
+pub fn shader_mesh_grid(points: &[MeshPoint]) -> anyhow::Result<xgpui_shader::MeshGrid> {
+    let (rows, cols) = mesh_dimensions(points).ok_or_else(|| anyhow::anyhow!("Invalid mesh grid"))?;
+    let mut controls = Vec::with_capacity(points.len());
+    for row in 0..rows {
+        for col in 0..cols {
+            let point = points.iter().find(|p| p.row as usize == row && p.col as usize == col)
+                .ok_or_else(|| anyhow::anyhow!("Missing mesh control point"))?;
+            anyhow::ensure!(point.color.a == 1., "Shader mesh supports opaque point colors only; select CPU for transparency.");
+            let u = mesh_tangent_position(points, rows, cols, row, col, true);
+            let v = mesh_tangent_position(points, rows, cols, row, col, false);
+            let rgb = point.color.to_rgb();
+            controls.push(xgpui_shader::ControlPoint {
+                position: [point.u, point.v], u_tangent: [u.0, u.1], v_tangent: [v.0, v.1], color: [rgb.r, rgb.g, rgb.b],
+            });
+        }
+    }
+    xgpui_shader::MeshGrid::new(cols as u32, rows as u32, controls)
+}
+
+pub fn rasterize_mesh_guides(size: gpui::Size<Pixels>, points: &[MeshPoint]) -> Option<Arc<gpui::RenderImage>> {
+    let (rows, cols) = mesh_dimensions(points)?;
+    let scale = raster_scale_for_size(size);
+    let width = (size.width.as_f32() * scale).round() as u32;
+    let height = (size.height.as_f32() * scale).round() as u32;
+    let mut pixmap = Pixmap::new(width, height)?;
+    paint_mesh_guides(&mut pixmap, points, rows, cols, width as f32, height as f32);
+    pixmap_to_render_image(pixmap)
+}

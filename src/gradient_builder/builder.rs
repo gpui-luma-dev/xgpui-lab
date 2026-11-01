@@ -17,9 +17,17 @@ use gpui_luma_look_radix as radix;
 use lucide_svg_static::Icon as LucideIcon;
 
 mod actions;
+mod linear_shader;
+mod mesh_shader;
+mod mesh_p3;
+mod p3;
+mod metrics;
 mod mesh;
 mod view;
 mod freeform;
+mod freeform_p3;
+mod field_handle;
+mod field_shader;
 mod color_list;
 mod sections;
 
@@ -32,7 +40,6 @@ use mesh::{
 
 pub struct GradientBuilder {
     look: Arc<Look>,
-    top_tabs: Entity<Tabs>,
     section_accordions: Vec<Vec<Entity<gpui_luma::controls::accordion::AccordionControl>>>,
     selected_tab: BuilderTab,
     gradient_stops: Entity<SliderControl>,
@@ -53,19 +60,62 @@ pub struct GradientBuilder {
     image_adjustments: super::paint::ImageAdjustments,
     spread_slider: Entity<SliderControl>,
     spread_percent: f32,
+    spread_animation: bool,
+    spread_phase: f32,
+    spread_speed: f32,
+    spread_speed_slider: Entity<SliderControl>,
+    spread_last_frame: Instant,
+    spread_animate_button: Entity<Button>,
     point_spread_slider: Entity<SliderControl>,
     point_spreads: Vec<f32>,
+    point_transforms: Vec<[f32; 2]>,
+    active_field_drag: Option<usize>,
     softness_slider: Entity<SliderControl>,
     softness_percent: f32,
     blend_selector: Entity<Selector>,
     freeform_hsl: bool,
     type_selector: Entity<Selector>,
     renderer_selector: Entity<Selector>,
+    freeform_gpu: bool,
+    freeform_mixing: super::color_field::Mixing,
+    freeform_renderer_selector: Entity<Selector>,
+    freeform_mixing_selector: Entity<Selector>,
+    field_background_weight: f32,
+    field_background_slider: Entity<SliderControl>,
+    field_shader_cache: field_shader::Cache,
+    freeform_p3: bool,
+    freeform_p3_switch: gpui_luma::controls::switch::Switch,
+    freeform_p3_cache: freeform_p3::Cache,
+    mesh_p3: bool,
+    mesh_p3_switch: gpui_luma::controls::switch::Switch,
+    mesh_shader_enabled: bool,
+    mesh_renderer_selector: Entity<Selector>,
+    mesh_shader_cache: mesh_shader::Cache,
     mesh_grid_selector: Entity<Selector>,
     mesh_aspect_ratio_selector: Entity<Selector>,
     rotation_deg: f32,
+    preview_metrics: metrics::Metrics,
+    angle_animation: bool,
+    angle_speed: f32,
+    angle_speed_slider: Entity<SliderControl>,
+    angle_last_frame: Instant,
+    animate_angle_button: Entity<Button>,
     gradient_type: GradientType,
     preview_renderer: PreviewRenderer,
+    linear_shader_cache: linear_shader::Cache,
+    preview_p3: bool,
+    p3_switch: gpui_luma::controls::switch::Switch,
+    p3_cache: p3::Cache,
+    mesh_palette: usize,
+    mesh_palette_animation: bool,
+    mesh_palette_phase: f32,
+    mesh_palette_speed: f32,
+    mesh_palette_last_frame: Instant,
+    mesh_palette_animate_button: Entity<Button>,
+    mesh_palette_speed_slider: Entity<SliderControl>,
+    mesh_metrics: metrics::Metrics,
+    freeform_metrics: metrics::Metrics,
+    mesh_cycle_button: Entity<Button>,
     mesh_grid_preset: MeshGridPreset,
     mesh_aspect_ratio_preset: MeshAspectRatioPreset,
     mesh_points: Vec<MeshPoint>,
@@ -104,6 +154,11 @@ pub struct GradientBuilder {
 impl GradientBuilder {
     pub(crate) fn export_button(&self) -> Entity<Button> {
         self.export_button.clone()
+    }
+
+    pub(crate) fn activate_page(&mut self, page: &'static str, cx: &mut Context<Self>) {
+        self.handle_top_tabs_event(&TabsEvent::Activate { tab_id: page.into(), label: page.into() }, cx);
+        cx.notify();
     }
 
     pub fn new(look: Arc<Look>, cx: &mut Context<Self>) -> Self {
@@ -168,28 +223,24 @@ impl GradientBuilder {
             .spawn(cx);
         let saturation_slider = radix::Slider::new("color-viz-image-saturation")
             .look(look.as_ref())
-            .size(radix::SliderSize::One)
             .range(-100.0..100.0)
             .step(1.0)
             .value(0.0)
             .spawn(cx);
         let vibrance_slider = radix::Slider::new("color-viz-image-vibrance")
             .look(look.as_ref())
-            .size(radix::SliderSize::One)
             .range(-100.0..100.0)
             .step(1.0)
             .value(0.0)
             .spawn(cx);
         let spread_slider = radix::Slider::new("color-viz-freeform-spread")
             .look(look.as_ref())
-            .size(radix::SliderSize::One)
             .range(10.0..150.0)
             .step(1.0)
             .value(100.0)
             .spawn(cx);
         let point_spread_slider = radix::Slider::new("color-viz-point-spread")
             .look(look.as_ref())
-            .size(radix::SliderSize::One)
             .range(10.0..200.0)
             .step(1.0)
             .value(100.0)
@@ -200,14 +251,12 @@ impl GradientBuilder {
             .spawn(cx);
         let softness_slider = radix::Slider::new("color-viz-falloff-softness")
             .look(look.as_ref())
-            .size(radix::SliderSize::One)
             .range(25.0..200.0)
             .step(1.0)
             .value(100.0)
             .spawn(cx);
         let blend_selector = radix::Selector::new("color-viz-freeform-blend")
             .look(look.as_ref())
-            .size(radix::ButtonSize::One)
             .items(vec![
                 gpui_luma::controls::selector::SelectorItem::new("rgb").label("RGB"),
                 gpui_luma::controls::selector::SelectorItem::new("hsl").label("HSL"),
@@ -223,25 +272,35 @@ impl GradientBuilder {
             .spawn(cx);
         let type_selector = radix::Selector::new("color-viz-gradient-type")
             .look(look.as_ref())
-            .size(radix::ButtonSize::One)
             .items(type_items())
             .selected_id("linear")
             .spawn(cx);
         let renderer_selector = radix::Selector::new("color-viz-gradient-renderer")
             .look(look.as_ref())
-            .size(radix::ButtonSize::One)
             .items(renderer_items())
             .selected_id("quads")
             .spawn(cx);
+        let mesh_palette_animate_button = radix::Button::new("mesh-animate-palette")
+            .look(&look).outline().label("Start").spawn(cx);
+        let mesh_palette_speed_slider = radix::Slider::new("mesh-palette-speed")
+            .look(&look).range(0.1..2.0).step(0.1).value(0.5).spawn(cx);
+        let mesh_cycle_button = radix::Button::new("mesh-cycle-palette")
+            .look(&look).outline().label("Cycle").spawn(cx);
+        let mesh_renderer_selector = radix::Selector::new("mesh-preview-renderer")
+            .look(look.as_ref())
+            .items(vec![
+                gpui_luma::controls::selector::SelectorItem::new("cpu").label("CPU"),
+                gpui_luma::controls::selector::SelectorItem::new("shader").label("Shader paint"),
+            ])
+            .selected_id("cpu")
+            .spawn(cx);
         let mesh_grid_selector = radix::Selector::new("color-viz-mesh-grid")
             .look(look.as_ref())
-            .size(radix::ButtonSize::One)
             .items(mesh_grid_items())
             .selected_id("3x4")
             .spawn(cx);
         let mesh_aspect_ratio_selector = radix::Selector::new("color-viz-mesh-aspect")
             .look(look.as_ref())
-            .size(radix::ButtonSize::One)
             .items(mesh_aspect_ratio_items())
             .selected_id("fill")
             .spawn(cx);
@@ -255,6 +314,59 @@ impl GradientBuilder {
             .checked(true)
             .spawn(cx)
             .tooltip(Tooltip::new("Hide/show points (right-click canvas)"), cx);
+        let angle_speed_slider = radix::Slider::new("gradient-angle-speed")
+            .look(&look)
+            .range(1.0..180.0)
+            .step(1.0)
+            .value(30.0)
+            .spawn(cx);
+        let animate_angle_button = radix::Button::new("gradient-animate-angle")
+            .look(&look)
+            .outline()
+            .label("Animate")
+            .spawn(cx);
+        let spread_speed_slider = radix::Slider::new("freeform-spread-speed")
+            .look(&look).range(0.1..2.0).step(0.05).value(0.25).spawn(cx);
+        let spread_animate_button = radix::Button::new("freeform-animate-spread")
+            .look(&look).outline().label("Animate spread").spawn(cx);
+        let freeform_renderer_selector = radix::Selector::new("freeform-renderer")
+            .look(&look).items(vec![
+                gpui_luma::controls::selector::SelectorItem::new("cpu").label("CPU"),
+                gpui_luma::controls::selector::SelectorItem::new("gpu").label("GPU field"),
+            ]).selected_id("cpu").spawn(cx);
+        let freeform_mixing_selector = radix::Selector::new("freeform-mixing")
+            .look(&look).items(vec![
+                gpui_luma::controls::selector::SelectorItem::new("ordered").label("Ordered"),
+                gpui_luma::controls::selector::SelectorItem::new("normalized").label("Normalized"),
+            ]).selected_id("ordered").spawn(cx);
+        let field_background_slider = radix::Slider::new("field-background-weight")
+            .look(&look).range(0.0..2.0).step(0.05).value(0.25).spawn(cx);
+        let freeform_p3_switch = radix::Switch::new("freeform-display-p3")
+            .look(&look).label("Display P3").checked(false)
+            .on_value_changed(cx, |this: &mut Self, on, cx| {
+                this.freeform_p3 = on;
+                this.sync_adjustment_support(cx);
+                let _ = this.ensure_preview_image_cache(this.preview_size, cx);
+                cx.notify();
+            }).spawn(cx);
+        let mesh_p3_switch = radix::Switch::new("mesh-display-p3")
+            .look(&look).label("Display P3").checked(false)
+            .on_value_changed(cx, |this: &mut Self, on, cx| {
+                this.mesh_p3 = on;
+                this.render_task = None;
+                this.sync_adjustment_support(cx);
+                cx.notify();
+            }).spawn(cx);
+        let p3_switch = radix::Switch::new("gradient-preview-color-space")
+            .look(&look)
+            .label("Display P3")
+            .checked(false)
+            .on_value_changed(cx, |this: &mut Self, on, cx| {
+                this.preview_p3 = on;
+                this.sync_adjustment_support(cx);
+                cx.notify();
+            })
+            .spawn(cx);
         let copy_css_button = crate::theme::icon_button("color-viz-copy-css", LucideIcon::Copy)
             .look(&look)
             .content_only()
@@ -262,7 +374,6 @@ impl GradientBuilder {
             .tooltip(Tooltip::new("Copy gradient CSS"), cx);
         let mut builder = Self {
             look: look.clone(),
-            top_tabs: top_tabs.clone(),
             section_accordions: Vec::new(),
             selected_tab: BuilderTab::Gradients,
             gradient_stops: gradient_stops.clone(),
@@ -283,19 +394,62 @@ impl GradientBuilder {
             image_adjustments: super::paint::ImageAdjustments::default(),
             spread_slider: spread_slider.clone(),
             spread_percent: 100.0,
+            spread_animation: false,
+            spread_phase: 0.,
+            spread_speed: 0.25,
+            spread_speed_slider: spread_speed_slider.clone(),
+            spread_last_frame: Instant::now(),
+            spread_animate_button: spread_animate_button.clone(),
             point_spread_slider: point_spread_slider.clone(),
             point_spreads: vec![100.0; freeform::default_points().len()],
+            point_transforms: vec![[0., 1.]; freeform::default_points().len()],
+            active_field_drag: None,
             softness_slider: softness_slider.clone(),
             softness_percent: 100.0,
             blend_selector: blend_selector.clone(),
             freeform_hsl: false,
             type_selector: type_selector.clone(),
             renderer_selector: renderer_selector.clone(),
+            freeform_gpu: false,
+            freeform_mixing: super::color_field::Mixing::Ordered,
+            freeform_renderer_selector: freeform_renderer_selector.clone(),
+            freeform_mixing_selector: freeform_mixing_selector.clone(),
+            field_background_weight: 0.25,
+            field_background_slider: field_background_slider.clone(),
+            field_shader_cache: field_shader::Cache::default(),
+            freeform_p3: false,
+            freeform_p3_switch,
+            freeform_p3_cache: freeform_p3::Cache::default(),
+            mesh_p3: false,
+            mesh_p3_switch,
+            mesh_shader_enabled: false,
+            mesh_renderer_selector: mesh_renderer_selector.clone(),
+            mesh_shader_cache: mesh_shader::Cache::default(),
             mesh_grid_selector: mesh_grid_selector.clone(),
             mesh_aspect_ratio_selector: mesh_aspect_ratio_selector.clone(),
             rotation_deg: 90.0,
+            preview_metrics: metrics::Metrics::default(),
+            angle_animation: false,
+            angle_speed: 30.0,
+            angle_speed_slider: angle_speed_slider.clone(),
+            angle_last_frame: Instant::now(),
+            animate_angle_button: animate_angle_button.clone(),
             gradient_type: GradientType::Linear,
             preview_renderer: PreviewRenderer::Quads,
+            linear_shader_cache: linear_shader::Cache::default(),
+            preview_p3: false,
+            p3_switch,
+            p3_cache: p3::Cache::default(),
+            mesh_palette: mesh::default_mesh_palette(mesh_grid_preset),
+            mesh_palette_animation: false,
+            mesh_palette_phase: 0.,
+            mesh_palette_speed: 0.5,
+            mesh_palette_last_frame: Instant::now(),
+            mesh_palette_animate_button: mesh_palette_animate_button.clone(),
+            mesh_palette_speed_slider: mesh_palette_speed_slider.clone(),
+            mesh_metrics: metrics::Metrics::default(),
+            freeform_metrics: metrics::Metrics::default(),
+            mesh_cycle_button: mesh_cycle_button.clone(),
             mesh_grid_preset,
             mesh_aspect_ratio_preset,
             mesh_points: default_mesh_points(mesh_grid_preset),
@@ -405,6 +559,7 @@ impl GradientBuilder {
         for (slider, saturation) in [(saturation_slider, true), (vibrance_slider, false)] {
             builder._subscriptions.push(cx.subscribe(&slider, move |this, _, event: &SliderEvent, cx| {
                 if let SliderEvent::Change { value, .. } | SliderEvent::Release { value, .. } = event {
+                    if !this.adjustments_supported() { return; }
                     if saturation {
                         this.image_adjustments.saturation = *value;
                     } else {
@@ -420,6 +575,89 @@ impl GradientBuilder {
         builder._subscriptions.push(cx.subscribe(&export_button, |this, _, event: &ButtonEvent, cx| {
             if matches!(event, ButtonEvent::Click) {
                 this.export_png(cx);
+            }
+        }));
+        builder._subscriptions.push(cx.subscribe(&angle_speed_slider, |this, _, event: &SliderEvent, cx| {
+            if let SliderEvent::Change { value, .. } | SliderEvent::Release { value, .. } = event {
+                this.angle_speed = *value;
+                cx.notify();
+            }
+        }));
+        builder._subscriptions.push(cx.subscribe(&animate_angle_button, |this, button, event: &ButtonEvent, cx| {
+            if matches!(event, ButtonEvent::Click) {
+                this.angle_animation = !this.angle_animation;
+                this.angle_last_frame = Instant::now();
+                button.update(cx, |button, cx| button.set_label(if this.angle_animation { "Stop" } else { "Animate" }, cx));
+                cx.notify();
+            }
+        }));
+        builder._subscriptions.push(cx.subscribe(&mesh_renderer_selector, |this, _, event: &SelectorEvent, cx| {
+            if let SelectorEvent::Change { item_id, .. } = event {
+                this.mesh_shader_enabled = item_id.as_ref() == "shader";
+                this.render_task = None;
+                this.sync_adjustment_support(cx);
+                let _ = this.ensure_preview_image_cache(this.preview_size, cx);
+                cx.notify();
+            }
+        }));
+        builder._subscriptions.push(cx.subscribe(&mesh_cycle_button, |this, _, event: &ButtonEvent, cx| {
+            if matches!(event, ButtonEvent::Click) { this.cycle_mesh_palette(cx); }
+        }));
+        builder._subscriptions.push(cx.subscribe(&mesh_palette_animate_button, |this, button, event: &ButtonEvent, cx| {
+            if matches!(event, ButtonEvent::Click) {
+                this.mesh_palette_animation = !this.mesh_palette_animation;
+                this.mesh_palette_last_frame = Instant::now();
+                button.update(cx, |button, cx| button.set_label(if this.mesh_palette_animation { "Stop" } else { "Start" }, cx));
+                cx.notify();
+            }
+        }));
+        builder._subscriptions.push(cx.subscribe(&mesh_palette_speed_slider, |this, _, event: &SliderEvent, cx| {
+            if let SliderEvent::Change { value, .. } | SliderEvent::Release { value, .. } = event {
+                this.mesh_palette_speed = *value;
+                cx.notify();
+            }
+        }));
+        builder._subscriptions.push(cx.subscribe(&freeform_renderer_selector, |this,_,event:&SelectorEvent,cx| {
+            if let SelectorEvent::Change {item_id,..}=event {
+                this.freeform_gpu=item_id.as_ref()=="gpu";
+                this.render_task=None;
+                this.preview_image_cache=None;
+                this.sync_adjustment_support(cx);
+                let _=this.ensure_preview_image_cache(this.preview_size,cx);
+                cx.notify();
+            }
+        }));
+        builder._subscriptions.push(cx.subscribe(&freeform_mixing_selector, |this,_,event:&SelectorEvent,cx| {
+            if let SelectorEvent::Change {item_id,..}=event {
+                this.freeform_mixing=if item_id.as_ref()=="normalized" {super::color_field::Mixing::Normalized} else {super::color_field::Mixing::Ordered};
+                this.preview_image_cache=None;
+                let _=this.ensure_preview_image_cache(this.preview_size,cx);
+                cx.notify();
+            }
+        }));
+        builder._subscriptions.push(cx.subscribe(&field_background_slider, |this,_,event:&SliderEvent,cx| {
+            if let SliderEvent::Change {value,..}|SliderEvent::Release {value,..}=event {
+                this.field_background_weight=*value;
+                this.preview_image_cache=None;
+                let _=this.ensure_preview_image_cache(this.preview_size,cx);
+                cx.notify();
+            }
+        }));
+        builder._subscriptions.push(cx.subscribe(&spread_animate_button, |this,button,event:&ButtonEvent,cx| {
+            if matches!(event,ButtonEvent::Click) {
+                this.spread_animation = !this.spread_animation;
+                this.spread_last_frame = Instant::now();
+                if this.spread_animation {
+                    this.spread_phase = ((this.spread_percent.clamp(50.,100.)-75.)/25.).acos();
+                }
+                button.update(cx,|button,cx|button.set_label(if this.spread_animation {"Stop spread"} else {"Animate spread"},cx));
+                cx.notify();
+            }
+        }));
+        builder._subscriptions.push(cx.subscribe(&spread_speed_slider, |this,_,event:&SliderEvent,cx| {
+            if let SliderEvent::Change {value,..}|SliderEvent::Release {value,..}=event {
+                this.spread_speed=*value;
+                cx.notify();
             }
         }));
         builder.init_section_accordions(cx);
@@ -494,12 +732,8 @@ mod tests {
         look.set_mode(ThemeMode::Dark);
         let (view, cx) = app.add_window_view(|_, cx| GradientBuilder::new(look.clone(), cx));
         cx.run_until_parked();
-        let tabs = cx.update(|_, cx| view.read(cx).top_tabs.clone());
         for id in ["freeform", "mesh", "gradients", "freeform"] {
-            tabs.update(cx, |tabs, cx| {
-                tabs.set_active(id, cx);
-                cx.emit(TabsEvent::Activate { tab_id: id.into(), label: id.into() });
-            });
+            view.update(cx, |view, cx| view.activate_page(id, cx));
             cx.run_until_parked();
             if id == "freeform" {
                 view.update(cx, |view, cx| {
@@ -539,13 +773,9 @@ mod tests {
         app.update(|cx| gpui_luma::init(cx).expect("initialize SDK"));
         let (view, cx) = app.add_window_view(|_, cx| GradientBuilder::new(Look::built_in().into(), cx));
         cx.run_until_parked();
-        let tabs = cx.update(|_, cx| view.read(cx).top_tabs.clone());
         let mut freeform_visible = true;
         for id in ["gradients", "mesh", "freeform", "mesh", "freeform"] {
-            tabs.update(cx, |tabs, cx| {
-                tabs.set_active(id, cx);
-                cx.emit(TabsEvent::Activate { tab_id: id.into(), label: id.into() });
-            });
+            view.update(cx, |view, cx| view.activate_page(id, cx));
             cx.run_until_parked();
             cx.update(|_, cx| {
                 let builder = view.read(cx);
@@ -603,6 +833,7 @@ mod tests {
                 cx,
             );
             builder.point_spreads = vec![50.0, 70.0, 90.0, 110.0];
+            builder.point_transforms = vec![[0., 1.], [30., 2.], [60., 3.], [90., 4.]];
             builder.selected_mesh_point = Some(0);
             builder.random_seed = 1;
             builder.sync_point_spread(cx);
@@ -637,6 +868,7 @@ mod tests {
             assert_eq!(builder.point_list.state.selected_keys().copied().collect::<Vec<_>>(), vec![retained_key]);
             assert_eq!(builder.mesh_points[1].u, before[2].u);
             assert_eq!(builder.point_spreads, vec![50.0, 90.0, 110.0]);
+            assert_eq!(builder.point_transforms, vec![[0., 1.], [60., 3.], [90., 4.]]);
             (builder.point_spread_slider.clone(), builder.point_buttons[1][1].clone())
         });
         action_after_delete.update(cx, |_, cx| cx.emit(ButtonEvent::Click));
