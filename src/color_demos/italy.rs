@@ -9,6 +9,7 @@ use gpui_luma_look_radix::Look;
 use xgpui_media::{ImageJob, LoadStatus, MediaImage, MediaLimits, MediaLoader, UploadStatus};
 use crate::{
     lab_controls::{Choice, labels},
+    lab_ui,
     theme::ColorVizLookExt,
 };
 use super::italy_model as model;
@@ -26,7 +27,7 @@ pub(crate) struct ItalyLab {
     look: Arc<Look>,
     selected: usize,
     preview: bool,
-    choices: Vec<Choice>,
+    presentation: Choice,
     thumbnails: Vec<Entity<Button>>,
     thumbnail_state: Arc<ThumbnailState>,
     loader: anyhow::Result<MediaLoader>,
@@ -38,26 +39,21 @@ pub(crate) struct ItalyLab {
 
 impl ItalyLab {
     pub(crate) fn new(look: Arc<Look>, cx: &mut Context<Self>) -> Self {
-        let choices = vec![
-            Choice::new("italy-source", "Photo", &look, labels(&NAMES), 1, cx, |this: &mut Self, index, cx| {
-                this.select_photo(index, cx);
-            }),
-            Choice::new(
-                "italy-mode",
-                "Presentation",
-                &look,
-                labels(&["Native Display P3", "sRGB preview"]),
-                0,
-                cx,
-                |this: &mut Self, index, cx| {
-                    this.preview = index == 1;
-                    if !this.preview {
-                        this.presentation_requested = false;
-                    }
-                    cx.notify();
-                },
-            ),
-        ];
+        let presentation = Choice::new(
+            "italy-mode",
+            "Presentation",
+            &look,
+            labels(&["Native Display P3", "sRGB preview"]),
+            0,
+            cx,
+            |this: &mut Self, index, cx| {
+                this.preview = index == 1;
+                if !this.preview {
+                    this.presentation_requested = false;
+                }
+                cx.notify();
+            },
+        );
         let thumbnail_state = Arc::new(ThumbnailState {
             images: RwLock::new(std::array::from_fn(|_| None)),
             errors: RwLock::new(std::array::from_fn(|_| None)),
@@ -69,14 +65,28 @@ impl ItalyLab {
             .enumerate()
             .map(|(index, &label)| {
                 let state = thumbnail_state.clone();
-                let button = gpui_luma_look_radix::Button::new(format!("italy-thumb-{index}"))
-                    .look(&look)
-                    .ghost()
-                    .gray()
-                    .size(gpui_luma_look_radix::ButtonSize::One)
+                let geometry = gpui_luma_look_radix::button_look_for::<()>(
+                    &look,
+                    gpui_luma_look_radix::ButtonVariant::Ghost,
+                    gpui_luma_look_radix::Paint::gray(),
+                    gpui_luma_look_radix::ButtonSize::One,
+                    Default::default(),
+                );
+                let button = Button::new(format!("italy-thumb-{index}"))
+                    .with_look(move |model| {
+                        let mut resolved = geometry(model);
+                        // Selection and keyboard focus use the card fill, without an outer ring.
+                        resolved.border = None;
+                        resolved
+                    })
                     .content(move |_, _| {
                         let image = state.images.read().unwrap_or_else(|error| error.into_inner())[index].clone();
-                        let mut preview = div().w(px(164.)).h(px(109.)).overflow_hidden();
+                        let mut preview = div()
+                            .w(px(174.))
+                            .h(px(116.))
+                            .flex_shrink_0()
+                            .overflow_hidden()
+                            .debug_selector(move || format!("italy-thumb-image-{index}"));
                         if let Some(image) = image {
                             let view = xgpui_media::image_view(image).size_full();
                             preview = if state.native.load(Ordering::Relaxed) {
@@ -95,7 +105,14 @@ impl ItalyLab {
                                     .unwrap_or_else(|| "Loading…".to_owned()),
                             );
                         }
-                        div().flex().flex_col().gap_2().child(preview).child(label)
+                        div()
+                            .flex()
+                            .flex_col()
+                            .w(px(174.))
+                            .flex_shrink_0()
+                            .gap_3()
+                            .child(preview)
+                            .child(div().font_weight(FontWeight::SEMIBOLD).child(label))
                     })
                     .on_click(cx, move |this: &mut Self, cx| this.select_photo(index, cx))
                     .spawn(cx);
@@ -111,17 +128,12 @@ impl ItalyLab {
                 .with_modifier(move |row, model| {
                     let colors = paint_look.interaction_colors();
                     let selected = state.selected.load(Ordering::Relaxed) == index;
-                    row.w(px(180.))
+                    lab_ui::comparison_surface(row, &paint_look)
+                        .w(px(200.))
+                        .max_w_full()
+                        .min_w_0()
                         .debug_selector(move || format!("italy-thumb-{index}"))
                         .h_auto()
-                        .p(px(7.))
-                        .border_1()
-                        .rounded(px(6.))
-                        .border_color(
-                            paint_look
-                                .resolve_step(gpui_luma_look_radix::ScaleFamily::Gray, if model.state.focused { 8 } else if selected || model.state.hovered { 7 } else { 6 })
-                                .hsla(),
-                        )
                         .when_some(colors.background(selected, model.state), |row, color| row.bg(color))
                 });
                 button.update(cx, |button, cx| button.set_template(Arc::new(template), cx));
@@ -132,7 +144,7 @@ impl ItalyLab {
             look,
             selected: 1,
             preview: false,
-            choices,
+            presentation,
             thumbnails,
             thumbnail_state,
             loader: MediaLoader::new(MediaLimits {
@@ -159,7 +171,6 @@ impl ItalyLab {
 
     fn select_photo(&mut self, index: usize, cx: &mut Context<Self>) {
         self.selected = index;
-        self.choices[0].sync(labels(&NAMES), index, cx);
         cx.notify();
     }
 
@@ -260,19 +271,26 @@ impl Render for ItalyLab {
                     .unwrap_or_else(|| "Loading Italy photograph…".to_owned()),
             );
         }
-        div().id("italy-lab-scroll").size_full().overflow_y_scroll().p_5().flex().flex_col().gap_4()
-            .bg(chrome.content_background).text_color(chrome.body_text)
-            .child(div().text_size(px(22.)).child("Italy — photographic gamut comparison"))
-            .child("Compare the same selected photograph in native Display P3 and clipped sRGB. Look at the orange/red umbrellas.")
-            .child(div().flex().flex_wrap().gap_3().children(self.choices.clone()))
-            .child(format!("{} · {} · Effective window mode: {:?}", NAMES[self.selected],
-                if native { "Native Display P3" } else { "sRGB preview" }, window.color_status().effective()))
-            .when(!self.preview && !native, |view| view.child("Wide-gamut output is unavailable on this window; showing the sRGB fallback."))
-            .child(div().flex().flex_wrap().gap_3().children(self.thumbnails.clone()))
-            .child(photo)
-            .when_some(self.error.clone(), |view, error| view.child(error))
-            .child(div().text_size(px(12.)).text_color(chrome.muted_text)
-                .child("Italy images courtesy of WebKit’s Wide Gamut demo (webkit.org/blog-files/color-gamut/). Prepared 600 × 400 linear-P3 fixtures use the original embedded profiles. The highlighted version contains WebKit’s diagnostic markings. Visible differences depend on display capability; this is not display calibration."))
+        lab_ui::page("italy-lab-scroll", &self.look).child(
+            lab_ui::container()
+                .child(lab_ui::caption(&self.look, "xgpui-color  /  Italy Photo Comparison"))
+                .child(lab_ui::header(&self.look, "Italy Photo Comparison",
+                    "Compare native Display P3 and sRGB with the same photograph."))
+                .child(div().flex().flex_col().gap_4()
+                    .child(div().flex().flex_col().w_full().max_w(px(600.)).mx_auto().gap_2()
+                        .child(photo)
+                        .child(lab_ui::caption(&self.look, format!("{} · {} · 600 × 400 · Effective window mode: {:?}", NAMES[self.selected],
+                        if native { "Native Display P3" } else { "sRGB preview" }, window.color_status().effective())).debug_selector(|| "italy-photo-description".into())))
+                    .child(lab_ui::control_row().justify_center().child(lab_ui::control(&self.look, self.presentation.clone().into_element())))
+                    .when(!self.preview && !native, |view| view.child(lab_ui::caption(&self.look,
+                        "Wide-gamut output is unavailable on this window; showing the sRGB fallback.")))
+                    .child(div().flex().flex_wrap().justify_center().gap_4().children(self.thumbnails.clone()))
+                    .when_some(self.error.clone(), |view, error| view.child(lab_ui::caption(&self.look, error)))
+                    .child(lab_ui::caption(&self.look,
+                        "Look at the orange and red umbrellas. Visible differences depend on display capability."))
+                    .child(lab_ui::caption(&self.look,
+                        "Italy images courtesy of WebKit’s Wide Gamut demo (webkit.org/blog-files/color-gamut/). Prepared 600 × 400 linear-P3 fixtures use the original embedded profiles. The highlighted version contains WebKit’s diagnostic markings. This is not display calibration."))),
+        )
     }
 }
 
@@ -282,7 +300,7 @@ mod tests {
     use gpui::TestAppContext;
 
     #[test]
-    fn three_thumbnail_buttons_select_the_large_photo_and_sync_the_source_control() {
+    fn three_thumbnail_buttons_select_the_large_photo() {
         let mut app = TestAppContext::single();
         app.update(|cx| gpui_luma::init(cx).expect("initialize SDK"));
         let (view, cx) = app.add_window_view(|_, cx| ItalyLab::new(crate::theme::default_look(), cx));
@@ -299,9 +317,46 @@ mod tests {
                 let lab = view.read(cx);
                 assert_eq!(lab.thumbnails.len(), 3);
                 assert_eq!(lab.selected, index);
-                assert_eq!(lab.choices[0].selector.read(cx).selected_id().unwrap().as_ref(), index.to_string());
                 assert_eq!(lab.thumbnail_state.selected.load(std::sync::atomic::Ordering::Relaxed), index);
             });
+        }
+    }
+
+    #[test]
+    fn photo_and_cards_preserve_aspect_ratio_and_wrap_in_both_themes() {
+        for mode in [gpui_luma::theme::ThemeMode::Light, gpui_luma::theme::ThemeMode::Dark] {
+            let mut app = TestAppContext::single();
+            app.update(|cx| gpui_luma::init(cx).expect("initialize SDK"));
+            let look = crate::theme::default_look();
+            look.set_mode(mode);
+            let (_view, cx) = app.add_window_view(|_, cx| ItalyLab::new(look, cx));
+            for width in [1000., 420.] {
+                cx.simulate_resize(gpui::size(gpui::px(width), gpui::px(1400.)));
+                cx.run_until_parked();
+                let photo = cx.debug_bounds("italy-selected-photo").unwrap();
+                assert!((photo.size.width.as_f32() / photo.size.height.as_f32() - 1.5).abs() < 0.01);
+                assert!(photo.size.width <= gpui::px(600.));
+                assert!((photo.center().x.as_f32() - width / 2.).abs() < 1.);
+                let previews = ["italy-thumb-image-0", "italy-thumb-image-1", "italy-thumb-image-2"]
+                    .map(|id| cx.debug_bounds(id).unwrap());
+                for preview in previews {
+                    assert_eq!(preview.size, gpui::size(gpui::px(174.), gpui::px(116.)));
+                }
+                let cards: Vec<_> = ["italy-thumb-0", "italy-thumb-1", "italy-thumb-2"]
+                    .map(|id| cx.debug_bounds(id).unwrap())
+                    .into_iter()
+                    .collect();
+                for card in &cards {
+                    assert!(card.left() >= gpui::px(0.) && card.right() <= gpui::px(width));
+                    assert!(card.top() >= photo.bottom());
+                }
+                if width < 600. {
+                    assert!(cards[1].top() > cards[0].top(), "photo cards must wrap");
+                } else {
+                    assert_eq!(cards[0].top(), cards[2].top());
+                    assert!(((cards[0].left() + cards[2].right()).as_f32() / 2. - width / 2.).abs() < 1.);
+                }
+            }
         }
     }
 
@@ -311,16 +366,16 @@ mod tests {
         app.update(|cx| gpui_luma::init(cx).expect("initialize SDK"));
         let (view, cx) = app.add_window_view(|_, cx| ItalyLab::new(crate::theme::default_look(), cx));
         cx.run_until_parked();
-        let choices = cx.update(|_, cx| view.read(cx).choices.clone());
-        cx.update(|_, cx| choices[0].select(2, cx));
-        cx.update(|_, cx| choices[1].select(1, cx));
+        view.update(cx, |lab, cx| lab.select_photo(2, cx));
+        let presentation = cx.update(|_, cx| view.read(cx).presentation.clone());
+        cx.update(|_, cx| presentation.select(1, cx));
         cx.run_until_parked();
         cx.update(|_, cx| {
             let lab = view.read(cx);
             assert_eq!(lab.selected, 2);
             assert!(lab.preview);
         });
-        cx.update(|_, cx| choices[1].select(0, cx));
+        cx.update(|_, cx| presentation.select(0, cx));
         cx.run_until_parked();
         cx.update(|_, cx| {
             let lab = view.read(cx);

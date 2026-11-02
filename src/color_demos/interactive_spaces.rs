@@ -1,5 +1,6 @@
 //! Interactive source-space comparisons using Luma controls and xgpui-color.
 use std::sync::Arc;
+use crate::lab_ui;
 use super::source_field::{self, Coordinates, FieldSettings, NAMES, rgba, hex};
 use super::hv_field_shader::{NativeColors, Parameters};
 
@@ -406,18 +407,11 @@ impl InteractiveSpaces {
     }
 
     fn panel(&self) -> Div {
-        let chrome = self.look.chrome();
-        vstack! {}
-            .gap_3()
-            .p_4()
-            .rounded_lg()
-            .bg(chrome.panel_background)
-            .border_1()
-            .border_color(chrome.border)
+        lab_ui::panel(&self.look)
     }
 
     fn caption(&self, text: impl Into<SharedString>) -> Div {
-        div().text_sm().text_color(self.look.chrome().muted_text).child(text.into())
+        lab_ui::caption(&self.look, text)
     }
 
     fn card(
@@ -430,9 +424,7 @@ impl InteractiveSpaces {
     ) -> Div {
         let title_style = self.look.typography_scale(TextSize::Base);
         let detail_style = gpui_luma::theme::LumaTextStyle { size: 12., ..self.look.typography_scale(TextSize::Sm) };
-        self.panel()
-            .p_3()
-            .gap_3()
+        lab_ui::comparison_card(&self.look)
             .flex_1()
             .min_w(px(200.))
             .flex_basis(px(200.))
@@ -470,11 +462,11 @@ impl InteractiveSpaces {
 
 impl InteractiveSpaces {
     fn render_header(&self) -> Div {
-        vstack! {
-            div().text_3xl().font_weight(FontWeight::SEMIBOLD).child("Color Spaces"),
-            self.caption("Explore color models by comparing one selected color in sRGB, Display P3, OKLCH, and Rec2020."),
-        }
-        .gap_2()
+        lab_ui::header(
+            &self.look,
+            "Color Spaces",
+            "Explore color models by comparing one selected color in sRGB, Display P3, OKLCH, and Rec2020.",
+        )
     }
 
     fn render_field(&self) -> Div {
@@ -494,24 +486,12 @@ impl InteractiveSpaces {
     }
 
     fn render_field_controls(&self) -> Div {
-        let label = radix::switch_theme(&self.look).resolve(
-            false,
-            gpui_luma::theme::InteractionState::default(),
-            gpui_luma::theme::ControlSize::Md,
-        );
-        hstack! {
-            self.source_choice.clone().into_element()
-                .typography_style(label.label_typography)
-                .font_family(label.label_font_family)
-                .text_color(label.label_color),
-            self.gpu_toggle.clone(),
-            self.contour_toggle.clone(),
-            self.caption("Saturation"),
-            div().w(px(200.)).child(self.saturation.clone()),
-        }
-        .flex_wrap()
-        .items_center()
-        .gap_3()
+        lab_ui::control_row()
+            .child(lab_ui::control(&self.look, self.source_choice.clone().into_element()))
+            .child(self.gpu_toggle.clone())
+            .child(self.contour_toggle.clone())
+            .child(self.caption("Saturation"))
+            .child(div().w(px(200.)).child(self.saturation.clone()))
     }
 
     fn render_comparisons(&self, coordinates: &Coordinates) -> Div {
@@ -566,7 +546,6 @@ impl InteractiveSpaces {
 impl Render for InteractiveSpaces {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_presentation(_window, _cx);
-        let chrome = self.look.chrome();
         let coordinates = Coordinates::new(self.rgb, self.field_settings.source_space());
         let preview = coordinates.as_ref().map(|color| color.srgb_reference).unwrap_or_else(|_| rgba(self.rgb));
         let comparison = match coordinates {
@@ -582,22 +561,12 @@ impl Render for InteractiveSpaces {
             .child(hstack! { self.render_parameters(), self.render_preview(preview) }.flex_wrap().gap_4())
             .child(self.caption("Changing source space preserves the selected color and converts its RGB coordinates. The field and color sliders explore the selected space; display capabilities determine the visible gamut."));
 
-        div()
-            .id("interactive-color-spaces")
-            .size_full()
-            .overflow_y_scroll()
-            .bg(chrome.content_background)
-            .text_color(chrome.body_text)
-            .child(
-                vstack! {
-                    self.caption("xgpui-color  /  Color Spaces"), self.render_header(), content,
-                }
-                .w_full()
-                .max_w(px(1240.))
-                .mx_auto()
-                .p_6()
-                .gap_5(),
-            )
+        lab_ui::page("interactive-color-spaces", &self.look).child(
+            lab_ui::container()
+                .child(self.caption("xgpui-color  /  Color Spaces"))
+                .child(self.render_header())
+                .child(content),
+        )
     }
 }
 
@@ -812,10 +781,11 @@ mod tests {
                 let page = page.read(cx);
                 if index > 0 {
                     assert_eq!(page.presentation_attempted, Some(gpui::WindowColorMode::WideGamutSdr));
-                    assert!(page
-                        .presentation_error
-                        .as_ref()
-                        .is_some_and(|error| error.contains("Native presentation unavailable")));
+                    assert!(
+                        page.presentation_error
+                            .as_ref()
+                            .is_some_and(|error| error.contains("Native presentation unavailable"))
+                    );
                 }
                 assert_eq!(
                     page.field_settings.window_mode(),

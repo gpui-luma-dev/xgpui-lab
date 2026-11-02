@@ -7,6 +7,10 @@ use xgpui_gamut::{
 };
 
 fn strip(colors: &[[f32; 4]], p3: bool) -> anyhow::Result<AnyElement> {
+    // Use direct native shader instances for reference cells. WideColor custom
+    // draws allocate one uncommitted Metal command buffer per cell; dense strips
+    // can exhaust the queue before the renderer reaches its submission phase.
+    let painter = p3.then(WidePainter::new).transpose()?.map(Arc::new);
     let cells = colors
         .iter()
         .map(|&[r, g, b, a]| {
@@ -14,16 +18,16 @@ fn strip(colors: &[[f32; 4]], p3: bool) -> anyhow::Result<AnyElement> {
             if p3 {
                 let [r, g, b] =
                     EncodedRgb::new(RgbSpace::DisplayP3, [r as f64, g as f64, b as f64])?.decode()?.components();
-                let color = Arc::new(WideColor::linear_p3([r as f32, g as f32, b as f32, a])?);
+                let color = WideColor::linear_p3([r as f32, g as f32, b as f32, a])?;
+                let painter = painter.as_ref().unwrap().clone();
                 Ok(cell
                     .child(
                         canvas(
                             |_, _, _| (),
                             move |bounds, _, window, _| {
-                                window.paint_custom(
-                                    CustomGeometry::RoundedRect { bounds, corner_radii: Default::default() },
-                                    color.clone(),
-                                );
+                                if let Err(error) = painter.paint_color(window, bounds, px(0.), &color) {
+                                    tracing::error!("Gamut reference strip: {error:#}");
+                                }
                             },
                         )
                         .size_full(),

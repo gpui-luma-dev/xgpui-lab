@@ -4,6 +4,7 @@ mod app;
 mod chromaticity;
 mod color_gamut_page;
 mod lab_controls;
+mod lab_ui;
 mod benchmarks;
 
 mod app_shell;

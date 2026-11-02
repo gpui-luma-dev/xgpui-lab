@@ -290,3 +290,21 @@ FPS, Windows driver execution or browser/WebGL2 compatibility.
 ## Chromaticity and color gamut lab
 
 Run `just chromaticity` here, or `just profile=dev chromaticity` from the sibling xgpui root, for a standalone CIE xy/u′v′ diagram with color fills, relative-luminance control and out-of-gamut hatching, an explicit color-pipeline inspector, and native-wide/sRGB rendering comparison. See [controls, dependencies and validation](validation/chromaticity-lab.md).
+
+## Gamut navigation freeze regression
+
+After building the app, run `python3 scripts/check-gamut-navigation.py` on a
+native wide-SDR-capable backend. This launches a separate process with a
+60-second timeout, navigates the real shell down all six xgpui-gamut pages and
+back up through Gamut Mapping, and repeats the sequence three times. Each
+selection draws and reads back three native frames in a tall viewport so the
+reference strips are exercised. Reports and Gamut Mapping captures are saved
+under `artifacts/gamut-navigation/`. No benchmark workloads are started by
+selecting the Benchmarks page. The headless navigation-event test checks the
+same sequence but cannot detect a native Metal stall.
+
+The dense CPU-reference strips use direct wide shader instances rather than
+one texture-producing custom draw per cell. This avoids filling Metal's queue
+with uncommitted producer command buffers during frame preparation. Other
+texture-producer APIs retain their existing behavior; this app-side fix does
+not change the renderer's general preparation/submission contract.

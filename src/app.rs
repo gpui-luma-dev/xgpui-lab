@@ -1,3 +1,4 @@
+pub(crate) mod navigation_regression;
 use gpui::{Context, Entity, FocusHandle, Render, Window, div, prelude::*, px};
 use gpui_luma_color::style::{ColorControlTheme, set_active_color_control_theme};
 use gpui_luma::focus::LumaFocusScopeExt;
