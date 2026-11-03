@@ -36,15 +36,17 @@ impl Cache {
             Ok(paint) => paint,
             Err(error) => return div().p_3().child(error.to_string()).into_any_element(),
         };
-        let mut content: Arc<dyn gpui::CustomContent> = paint.clone();
+        let content: Arc<dyn gpui::CustomContent> = paint.clone();
         #[cfg(target_os = "macos")]
-        if wide {
+        let content: Arc<dyn gpui::CustomContent> = if wide {
             if self.wide.as_ref().is_none_or(|(old, _)| !Arc::ptr_eq(old, &paint)) {
                 self.wide =
                     Some((paint.clone(), Arc::new(super::mesh_p3::Paint::new(paint.clone(), self.pipeline.clone()))));
             }
-            content = self.wide.as_ref().unwrap().1.clone();
-        }
+            self.wide.as_ref().unwrap().1.clone()
+        } else {
+            content
+        };
         #[cfg(not(target_os = "macos"))]
         let _ = wide;
         let guide_image = if guides {

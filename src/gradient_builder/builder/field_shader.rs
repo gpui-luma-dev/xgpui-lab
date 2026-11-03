@@ -1,6 +1,9 @@
 //! Adapter between editor state and the app's promotable GPU field primitive.
+#[cfg(any(target_os = "macos", all(test, feature = "test-support")))]
 use super::*;
-use super::super::color_field::{ColorField, Output};
+use super::super::color_field::ColorField;
+#[cfg(target_os = "macos")]
+use super::super::color_field::Output;
 use gpui::{AnyElement, IntoElement, div, prelude::*};
 #[derive(Default)]
 pub(super) struct Cache {

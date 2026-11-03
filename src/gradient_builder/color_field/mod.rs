@@ -5,6 +5,7 @@
 //! relative to the background once, avoiding spatially changing hue branches.
 //! Ordered preserves the editor's straight-channel lerp and source-over alpha.
 //! Normalized is an associated-color weighted mixture, including the background.
+#[cfg(any(target_os = "macos", test))]
 use anyhow::{Result, ensure};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -13,6 +14,7 @@ pub enum Mixing {
     Ordered,
     Normalized,
 }
+#[cfg(target_os = "macos")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Output {
     Srgb,
@@ -39,6 +41,7 @@ pub struct ColorField {
     pub background_weight: f32,
 }
 impl ColorField {
+    #[cfg(any(target_os = "macos", test))]
     pub fn validate(&self) -> Result<()> {
         ensure!(self.points.len() <= 16, "Color fields support at most 16 points");
         let color = |c: &[f32; 4]| c.iter().all(|v| v.is_finite() && (0. ..=1.).contains(v));

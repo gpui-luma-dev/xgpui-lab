@@ -8,6 +8,7 @@ pub(super) struct Cache {
     #[cfg(target_os = "macos")]
     pipeline: Arc<super::mesh_p3::Pipeline>,
 }
+#[cfg(any(target_os = "macos", test))]
 fn straight_bgra(image: &RenderImage) -> anyhow::Result<Vec<u8>> {
     let mut bytes = image.as_bytes(0).ok_or_else(|| anyhow::anyhow!("Freeform pixels unavailable"))?.to_vec();
     for pixel in bytes.as_chunks_mut::<4>().0 {

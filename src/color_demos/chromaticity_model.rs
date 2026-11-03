@@ -41,7 +41,7 @@ fn contains(points: &[[f64; 2]], p: [f64; 2]) -> bool {
     inside
 }
 pub struct Cell {
-    #[cfg(test)]
+    #[cfg(all(test, target_os = "macos"))]
     pub xy: [f64; 2],
     #[cfg(test)]
     pub rgb: [f32; 3],
@@ -73,7 +73,7 @@ pub fn cells(
                 .components()
                 .map(|v| v as f32);
             cells.push(Cell {
-                #[cfg(test)]
+                #[cfg(all(test, target_os = "macos"))]
                 xy: [col as f64 * 0.8 / 48., row as f64 * 0.9 / 54.],
                 #[cfg(test)]
                 rgb: preview,
