@@ -309,16 +309,12 @@ with uncommitted producer command buffers during frame preparation. Other
 texture-producer APIs retain their existing behavior; this app-side fix does
 not change the renderer's general preparation/submission contract.
 
-### Focused GPU image branch
-
-This branch starts before the PR116 migration and retains direct UI shaders,
-color controls and source-sized media. The graph/slot/global-budget migration is
-preserved on the older branches, outside this implementation.
+### Photo Viewer
 
 Select the matching local SDK without editing Luma:
 
 ```sh
-python3 .github/scripts/dependencies.py configure --sdk ../xgpui-focused
+python3 .github/scripts/dependencies.py configure --sdk ../xgpui
 cargo run --features gpui_platform/runtime_shaders
 ```
 
