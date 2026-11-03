@@ -87,7 +87,7 @@ class DependencyContractTests(unittest.TestCase):
 
     def test_configures_an_explicit_local_worktree(self):
         self.sdk_packages()
-        sdk = self.root.parent / "xgpui-focused"
+        sdk = self.root.parent / "sdk-checkout"
         (self.root.parent / "xgpui").rename(sdk)
         dependencies.configure_sdk(self.root, sdk)
         text = (self.root / ".cargo/config.toml").read_text()
