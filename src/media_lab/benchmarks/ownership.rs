@@ -2,9 +2,7 @@
 use anyhow::{Context as _, Result, ensure};
 use gpui::{prelude::*, *};
 use gpui_apple::{custom_draw::MetalCustomContext, metal_renderer::MetalHeadlessRenderer};
-use gpui_apple::metal::{
-    MTLCommandBufferStatus, MTLCommandBuffer as _, MTLCommandQueue as _, MTLDevice as _, MTLSharedEvent as _,
-};
+use gpui_apple::metal::{MTLCommandBufferStatus, MTLCommandBuffer as _, MTLDevice as _, MTLSharedEvent as _};
 use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_core_foundation::CFRetained;
 use objc2_core_video::CVPixelBuffer;
@@ -71,8 +69,10 @@ impl Gate {
             watched.signal();
             timeout
         });
-        let command = context.queue.commandBuffer().context("Metal command buffer unavailable")?;
-        command.encodeWaitForEvent_value(ProtocolObject::from_ref(&*event.0), 1);
+        let command = context.record(|command| {
+            command.encodeWaitForEvent_value(ProtocolObject::from_ref(&*event.0), 1);
+            Ok(())
+        })?;
         command.commit();
         Ok(Self { event, stop: Some(tx), thread: Some(thread) })
     }

@@ -213,7 +213,7 @@ impl Render for ItalyLab {
                 cx.notify();
             });
         }
-        for index in 0..3 {
+        for (index, name) in NAMES.iter().enumerate() {
             if let Some(job) = &mut self.jobs[index] {
                 if let Some(image) = job.try_take() {
                     self.images[index] = Some(image.clone());
@@ -221,7 +221,7 @@ impl Render for ItalyLab {
                     self.thumbnails[index].update(cx, |_, cx| cx.notify());
                     self.jobs[index] = None;
                 } else if let LoadStatus::Failed(error) = job.status() {
-                    let message = format!("{}: {error}", NAMES[index]);
+                    let message = format!("{name}: {error}");
                     self.thumbnail_state.errors.write().unwrap_or_else(|error| error.into_inner())[index] =
                         Some(message.clone());
                     self.error = Some(message);

@@ -16,17 +16,24 @@ pub struct ExtensionPane {
     shader: Option<Entity<crate::shader::ShaderPage>>,
     color: Option<Entity<crate::color_lab::ColorPage>>,
     media: Option<Entity<crate::media_lab::MediaPage>>,
+    photo: Option<Entity<crate::photo_viewport::PhotoViewport>>,
     parley: Option<Entity<crate::parley_lab::ParleyPage>>,
     svg: Option<Entity<crate::svg_lab::SvgPage>>,
 }
 
 impl ExtensionPane {
     pub fn requires_sdr(&self, cx: &gpui::App) -> bool {
+        if self.active_demo.is_some() {
+            return false;
+        }
         self.shader.as_ref().is_some_and(|page| page.read(cx).requires_sdr())
             || self.media.as_ref().is_some_and(|page| page.read(cx).requires_sdr(cx))
     }
 
     pub fn deactivate(&mut self, cx: &mut Context<Self>) {
+        if let Some(photo) = &self.photo {
+            photo.update(cx, |photo, _| photo.suspend());
+        }
         if let Some(page) = &self.interactive_spaces {
             page.update(cx, |page, cx| page.deactivate(cx));
         }
@@ -46,6 +53,12 @@ impl ExtensionPane {
             view.update(cx, |view, cx| view.deactivate(cx));
         }
         self.active_demo = match page {
+            "Photo Viewer" if self.media.is_some() => {
+                let view = self.photo.get_or_insert_with(|| {
+                    cx.new(|cx| crate::photo_viewport::PhotoViewport::new(self.look.clone(), cx))
+                });
+                Some(view.clone().into())
+            }
             "Color Spaces" if self.color.is_some() => {
                 let view = self.interactive_spaces.get_or_insert_with(|| {
                     cx.new(|cx| crate::color_demos::InteractiveSpaces::new(self.look.clone(), cx))
@@ -69,8 +82,16 @@ impl ExtensionPane {
         };
         if self.active_demo.is_some() {
             self.deactivate(cx);
+            if page == "Photo Viewer"
+                && let Some(photo) = &self.photo
+            {
+                photo.update(cx, |photo, cx| photo.activate(cx));
+            }
             cx.notify();
             return;
+        }
+        if let Some(photo) = &self.photo {
+            photo.update(cx, |photo, _| photo.suspend());
         }
         let tab_id: gpui::SharedString = page.into();
         self.benchmarks_active = tab_id == "Benchmarks" && self.benchmarks.is_some();
@@ -128,6 +149,7 @@ impl ExtensionPane {
             shader,
             color,
             media,
+            photo: None,
             svg,
             parley,
         }

@@ -29,7 +29,9 @@ pub enum PreviewRenderer {
 }
 
 impl PreviewRenderer {
-    pub fn is_shader(self) -> bool { matches!(self, Self::ShaderPaint | Self::ShaderBrush) }
+    pub fn is_shader(self) -> bool {
+        matches!(self, Self::ShaderPaint | Self::ShaderBrush)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

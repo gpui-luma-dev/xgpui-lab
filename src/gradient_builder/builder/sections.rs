@@ -264,38 +264,68 @@ impl GradientBuilder {
                                     .child(form_field!("Aspect", chrome; mesh_aspect_ratio_selector)),
                             ),
                     )
-                    .when(!freeform, |panel| panel
-                        .child(div().flex().items_center().gap_2()
-                            .child(self.mesh_cycle_button.clone())
-                            .child(div().text_size(px(11.)).child(format!("{} · {}/5",
-                                super::mesh::MESH_PALETTE_NAMES[self.mesh_palette], self.mesh_palette + 1))))
-                        .child(self.mesh_palette_animate_button.clone())
-                        .child(compact_slider_row(
-                            "Speed", self.mesh_palette_speed_slider.clone(),
-                            format!("{:.1}/s", self.mesh_palette_speed), info_label_style, chrome,
-                        ))
-                        .child(form_field!("Renderer", chrome; self.mesh_renderer_selector.clone()))
-                        .child(self.mesh_p3_switch.clone())
-                        .when(self.mesh_p3, |panel| panel.child(div().text_size(px(10.)).child(
-                            if cfg!(target_os = "macos") && super::p3::available(window) {
-                                "Display P3 · native mesh shader"
-                            } else { "Display P3 unavailable · sRGB fallback" }
-                        )))
-                        .when(self.mesh_shader_enabled, |panel| panel.child(div().text_size(px(10.)).child(
-                            "Native Hermite mesh · opaque colors · interpolation differs from CPU Coons"
-                        ))))
-                    .when(freeform, |panel| panel
-                        .child(form_field!("Renderer", chrome; self.freeform_renderer_selector.clone()))
-                        .child(form_field!("Mixing", chrome; self.freeform_mixing_selector.clone()))
-                        .when(self.freeform_mixing == super::super::color_field::Mixing::Normalized, |panel| panel.child(compact_slider_row(
-                            "Base weight", self.field_background_slider.clone(), format!("{:.2}", self.field_background_weight), info_label_style, chrome,
-                        )))
-                        .child(self.freeform_p3_switch.clone())
-                        .when(self.freeform_p3, |panel| panel.child(div().text_size(px(10.)).child(
-                            if cfg!(target_os = "macos") && super::p3::available(window) {
-                                if self.freeform_gpu { "Display P3 · GPU field" } else { "Display P3 · CPU field" }
-                            } else { "Display P3 unavailable · sRGB fallback" }
-                        ))))
+                    .when(!freeform, |panel| {
+                        panel
+                            .child(div().flex().items_center().gap_2().child(self.mesh_cycle_button.clone()).child(
+                                div().text_size(px(11.)).child(format!(
+                                    "{} · {}/5",
+                                    super::mesh::MESH_PALETTE_NAMES[self.mesh_palette],
+                                    self.mesh_palette + 1
+                                )),
+                            ))
+                            .child(self.mesh_palette_animate_button.clone())
+                            .child(compact_slider_row(
+                                "Speed",
+                                self.mesh_palette_speed_slider.clone(),
+                                format!("{:.1}/s", self.mesh_palette_speed),
+                                info_label_style,
+                                chrome,
+                            ))
+                            .child(form_field!("Renderer", chrome; self.mesh_renderer_selector.clone()))
+                            .child(self.mesh_p3_switch.clone())
+                            .when(self.mesh_p3, |panel| {
+                                panel.child(div().text_size(px(10.)).child(
+                                    if cfg!(target_os = "macos") && super::p3::available(window) {
+                                        "Display P3 · native mesh shader"
+                                    } else {
+                                        "Display P3 unavailable · sRGB fallback"
+                                    },
+                                ))
+                            })
+                            .when(self.mesh_shader_enabled, |panel| {
+                                panel.child(div().text_size(px(10.)).child(
+                                    "Native Hermite mesh · opaque colors · interpolation differs from CPU Coons",
+                                ))
+                            })
+                    })
+                    .when(freeform, |panel| {
+                        panel
+                            .child(form_field!("Renderer", chrome; self.freeform_renderer_selector.clone()))
+                            .child(form_field!("Mixing", chrome; self.freeform_mixing_selector.clone()))
+                            .when(self.freeform_mixing == super::super::color_field::Mixing::Normalized, |panel| {
+                                panel.child(compact_slider_row(
+                                    "Base weight",
+                                    self.field_background_slider.clone(),
+                                    format!("{:.2}", self.field_background_weight),
+                                    info_label_style,
+                                    chrome,
+                                ))
+                            })
+                            .child(self.freeform_p3_switch.clone())
+                            .when(self.freeform_p3, |panel| {
+                                panel.child(div().text_size(px(10.)).child(
+                                    if cfg!(target_os = "macos") && super::p3::available(window) {
+                                        if self.freeform_gpu {
+                                            "Display P3 · GPU field"
+                                        } else {
+                                            "Display P3 · CPU field"
+                                        }
+                                    } else {
+                                        "Display P3 unavailable · sRGB fallback"
+                                    },
+                                ))
+                            })
+                    })
                     .child(render_mesh_background_row(mesh_background, info_label_style, chrome, builder.clone()));
                 panel.into_any_element()
             }
@@ -416,8 +446,11 @@ impl GradientBuilder {
                         this.child(div().flex().items_center().gap_2().children(freeform_buttons))
                             .child(self.spread_animate_button.clone())
                             .child(compact_slider_row(
-                                "Speed", self.spread_speed_slider.clone(),
-                                format!("{:.2}/s", self.spread_speed), info_label_style, chrome,
+                                "Speed",
+                                self.spread_speed_slider.clone(),
+                                format!("{:.2}/s", self.spread_speed),
+                                info_label_style,
+                                chrome,
                             ))
                             .child(compact_slider_row(
                                 "Spread · All",

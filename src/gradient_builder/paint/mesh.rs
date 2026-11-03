@@ -670,14 +670,22 @@ pub fn shader_mesh_grid(points: &[MeshPoint]) -> anyhow::Result<xgpui_shader::Me
     let mut controls = Vec::with_capacity(points.len());
     for row in 0..rows {
         for col in 0..cols {
-            let point = points.iter().find(|p| p.row as usize == row && p.col as usize == col)
+            let point = points
+                .iter()
+                .find(|p| p.row as usize == row && p.col as usize == col)
                 .ok_or_else(|| anyhow::anyhow!("Missing mesh control point"))?;
-            anyhow::ensure!(point.color.a == 1., "Shader mesh supports opaque point colors only; select CPU for transparency.");
+            anyhow::ensure!(
+                point.color.a == 1.,
+                "Shader mesh supports opaque point colors only; select CPU for transparency."
+            );
             let u = mesh_tangent_position(points, rows, cols, row, col, true);
             let v = mesh_tangent_position(points, rows, cols, row, col, false);
             let rgb = point.color.to_rgb();
             controls.push(xgpui_shader::ControlPoint {
-                position: [point.u, point.v], u_tangent: [u.0, u.1], v_tangent: [v.0, v.1], color: [rgb.r, rgb.g, rgb.b],
+                position: [point.u, point.v],
+                u_tangent: [u.0, u.1],
+                v_tangent: [v.0, v.1],
+                color: [rgb.r, rgb.g, rgb.b],
             });
         }
     }

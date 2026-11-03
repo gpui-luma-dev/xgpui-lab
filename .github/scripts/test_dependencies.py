@@ -67,23 +67,45 @@ class DependencyContractTests(unittest.TestCase):
         self.assertEqual(dependencies.git(self.root.parent / "gpui-luma", "status", "--porcelain"), "")
         self.assertEqual(dependencies.git(self.root.parent / "xgpui", "status", "--porcelain"), "")
 
-    def test_aligns_luma_to_the_pinned_sibling(self):
-        manifest = self.root.parent / "gpui-luma/Cargo.toml"
-        manifest.write_text('gpui = { package = "xgpui", version = "=1.0.0" }\n'
-                            'gpui_platform = {\n  package = "xgpui-platform",\n'
-                            '  version = "=1.0.0",\n}\n')
-        dependencies.align_luma(self.root)
-        result = manifest.read_text()
-        self.assertIn('path = "../xgpui/gpui/crates/gpui"', result)
-        self.assertIn('path = "../xgpui/gpui/crates/gpui-platform"', result)
-        self.assertNotIn('version = "=1.0.0"', result)
+    def sdk_packages(self):
+        for relative in dependencies.SDK_PACKAGES.values():
+            path = self.root.parent / "xgpui" / relative / "Cargo.toml"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("[package]\n")
 
-    def test_rejects_unexpected_luma_manifest_without_writing(self):
-        manifest = self.root.parent / "gpui-luma/Cargo.toml"
-        original = manifest.read_text()
-        with self.assertRaisesRegex(ValueError, "declaration changed"):
-            dependencies.align_luma(self.root)
-        self.assertEqual(manifest.read_text(), original)
+    def test_configures_one_sdk_without_modifying_luma(self):
+        self.sdk_packages()
+        before = (self.root.parent / "gpui-luma/Cargo.toml").read_text()
+        dependencies.configure_sdk(self.root)
+        text = (self.root / ".cargo/config.toml").read_text()
+        self.assertEqual(text.count(" = { path = "), len(dependencies.SDK_PACKAGES))
+        for name, relative in dependencies.SDK_PACKAGES.items():
+            self.assertIn(f"{name} = ", text)
+            self.assertIn((self.root.parent / "xgpui" / relative).resolve().as_posix(), text)
+        self.assertEqual((self.root.parent / "gpui-luma/Cargo.toml").read_text(), before)
+        dependencies.configure_sdk(self.root)  # idempotent on generated configuration
+
+    def test_configures_an_explicit_local_worktree(self):
+        self.sdk_packages()
+        sdk = self.root.parent / "xgpui-focused"
+        (self.root.parent / "xgpui").rename(sdk)
+        dependencies.configure_sdk(self.root, sdk)
+        text = (self.root / ".cargo/config.toml").read_text()
+        self.assertIn(sdk.resolve().as_posix(), text)
+
+    def test_preserves_developer_cargo_configuration(self):
+        self.sdk_packages()
+        (self.root / ".cargo").mkdir()
+        path = self.root / ".cargo/config.toml"
+        path.write_text("# developer source selection\n")
+        with self.assertRaisesRegex(ValueError, "Refusing to overwrite"):
+            dependencies.configure_sdk(self.root)
+        self.assertEqual(path.read_text(), "# developer source selection\n")
+
+    def test_missing_sdk_package_does_not_write_configuration(self):
+        with self.assertRaisesRegex(ValueError, "Missing SDK package"):
+            dependencies.configure_sdk(self.root)
+        self.assertFalse((self.root / ".cargo/config.toml").exists())
 
     def test_cache_identity_changes_with_manifest_or_lock(self):
         initial = dependencies.fingerprint(self.root)

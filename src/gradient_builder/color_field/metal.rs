@@ -2,7 +2,7 @@ use super::*;
 use anyhow::Context as _;
 use gpui::{CustomContent, DevicePixels, Size};
 use gpui_apple::{
-    custom_draw::{MetalCustomContext, MetalCustomOutput, MetalWideSdrOutput},
+    custom_draw::{MetalCustomContext, MetalCustomOutput, MetalWideSdrOutput, MetalQueueIdentity},
     metal::*,
 };
 use std::{
@@ -30,7 +30,7 @@ struct Parameters {
 }
 #[derive(Default)]
 pub struct PipelineCache {
-    cached: Mutex<Option<(u64, CommandQueue, ComputePipelineState)>>,
+    cached: Mutex<Option<(u64, MetalQueueIdentity, ComputePipelineState)>>,
     pub compilations: AtomicUsize,
 }
 // Retained immutable pipeline/queue; all access is serialized by the mutex.
@@ -118,7 +118,7 @@ impl CustomContent for Paint {
                 .context("Field kernel missing")?;
             let pipeline =
                 ctx.device.newComputePipelineStateWithFunction_error(&function).map_err(anyhow::Error::msg)?;
-            *pipelines = Some((ctx.cache_key(), ctx.queue.clone(), pipeline));
+            *pipelines = Some((ctx.cache_key(), ctx.queue_identity(), pipeline));
             self.pipeline.compilations.fetch_add(1, Ordering::Relaxed);
         }
         let mut points: Vec<_> = self
@@ -180,23 +180,25 @@ impl CustomContent for Paint {
         descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
         descriptor.setStorageMode(MTLStorageMode::Private);
         let texture = ctx.device.newTextureWithDescriptor(&descriptor).context("Field texture allocation failed")?;
-        let command = ctx.queue.commandBuffer().context("Field command allocation failed")?;
-        let encoder = command.computeCommandEncoder().context("Field encoder allocation failed")?;
-        encoder.setComputePipelineState(&pipelines.as_ref().unwrap().2);
-        unsafe {
-            encoder.setBuffer_offset_atIndex(Some(&buffer), 0, 0);
-            encoder.setBytes_length_atIndex(
-                std::ptr::NonNull::from(&parameters).cast(),
-                std::mem::size_of::<Parameters>(),
-                1,
+        let command = ctx.record(|command| {
+            let encoder = command.computeCommandEncoder().context("Field encoder allocation failed")?;
+            encoder.setComputePipelineState(&pipelines.as_ref().unwrap().2);
+            unsafe {
+                encoder.setBuffer_offset_atIndex(Some(&buffer), 0, 0);
+                encoder.setBytes_length_atIndex(
+                    std::ptr::NonNull::from(&parameters).cast(),
+                    std::mem::size_of::<Parameters>(),
+                    1,
+                );
+                encoder.setTexture_atIndex(Some(&texture), 0);
+            }
+            encoder.dispatchThreads_threadsPerThreadgroup(
+                MTLSize { width: extent.width.0 as usize, height: extent.height.0 as usize, depth: 1 },
+                MTLSize { width: 8, height: 8, depth: 1 },
             );
-            encoder.setTexture_atIndex(Some(&texture), 0);
-        }
-        encoder.dispatchThreads_threadsPerThreadgroup(
-            MTLSize { width: extent.width.0 as usize, height: extent.height.0 as usize, depth: 1 },
-            MTLSize { width: 8, height: 8, depth: 1 },
-        );
-        encoder.endEncoding();
+            encoder.endEncoding();
+            Ok(())
+        })?;
         let result = Prepared { texture, commands: vec![command] };
         let output = result.reusable(ctx, self.output)?;
         *cached = Some((ctx.cache_key(), extent, result));
@@ -222,7 +224,7 @@ mod tests {
         let row = (width * bpp).div_ceil(256) * 256;
         let buffer =
             ctx.device.newBufferWithLength_options(row * height, MTLResourceOptions::StorageModeShared).unwrap();
-        let command = ctx.queue.commandBuffer().unwrap();
+        let command = ctx.record(|command| {
         let blit = command.blitCommandEncoder().unwrap();
         unsafe {
             blit.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toBuffer_destinationOffset_destinationBytesPerRow_destinationBytesPerImage(
@@ -230,6 +232,8 @@ mod tests {
         );
         }
         blit.endEncoding();
+            Ok(())
+        }).unwrap();
         command.commit();
         command.waitUntilCompleted();
         assert_eq!(command.status(), MTLCommandBufferStatus::Completed);
@@ -251,7 +255,7 @@ mod tests {
         objc2::rc::autoreleasepool(|_| {
             let device = MTLCreateSystemDefaultDevice().expect("Metal device");
             let queue = device.newCommandQueue().unwrap();
-            let ctx = MetalCustomContext { device, queue };
+            let ctx = MetalCustomContext::new(device, queue);
             let pipeline = Arc::new(PipelineCache::default());
             let (width, height) = (32usize, 24usize);
             for mixing in [Mixing::Ordered, Mixing::Normalized] {

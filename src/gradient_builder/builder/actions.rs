@@ -29,7 +29,9 @@ impl GradientBuilder {
         }
         for slider in [&self.saturation_slider, &self.vibrance_slider] {
             slider.update(cx, |slider, cx| {
-                if !enabled { slider.set_value(0., cx); }
+                if !enabled {
+                    slider.set_value(0., cx);
+                }
                 slider.set_enabled(enabled, cx);
             });
         }
@@ -130,7 +132,7 @@ impl GradientBuilder {
             }
             self.render_task = None;
             self.active_mesh_drag = None;
-        self.active_field_drag = None;
+            self.active_field_drag = None;
             self.color_picker_open = false;
             let _ = self.ensure_preview_image_cache(self.preview_size, cx);
             cx.notify();
@@ -264,16 +266,17 @@ impl GradientBuilder {
     }
 
     pub(super) fn cycle_mesh_palette(&mut self, cx: &mut Context<Self>) {
-        if self.selected_tab != BuilderTab::Mesh { return; }
+        if self.selected_tab != BuilderTab::Mesh {
+            return;
+        }
         self.mesh_palette_phase = 0.;
         self.mesh_palette = (self.mesh_palette + 1) % super::mesh::MESH_PALETTE_NAMES.len();
         super::mesh::apply_mesh_palette(&mut self.mesh_points, self.mesh_palette);
-        if self.color_picker_open {
-            if let MeshColorTarget::Point(index) = self.mesh_color_target {
-                if let Some(point) = self.mesh_points.get(index) {
-                    self.color_picker.update(cx, |picker, cx| picker.set_color(point.color, cx));
-                }
-            }
+        if self.color_picker_open
+            && let MeshColorTarget::Point(index) = self.mesh_color_target
+            && let Some(point) = self.mesh_points.get(index)
+        {
+            self.color_picker.update(cx, |picker, cx| picker.set_color(point.color, cx));
         }
         self.preview_image_cache = None;
         self.render_task = None;
@@ -536,9 +539,15 @@ impl GradientBuilder {
     }
 
     pub(super) fn uses_render_preview(&self, cx: &Context<Self>) -> bool {
-        if self.selected_tab == BuilderTab::Freeform && self.freeform_gpu { return false; }
-        if self.selected_tab == BuilderTab::Mesh && self.mesh_shader_enabled { return false; }
-        if self.selected_tab == BuilderTab::Gradients && self.preview_renderer.is_shader() { return false; }
+        if self.selected_tab == BuilderTab::Freeform && self.freeform_gpu {
+            return false;
+        }
+        if self.selected_tab == BuilderTab::Mesh && self.mesh_shader_enabled {
+            return false;
+        }
+        if self.selected_tab == BuilderTab::Gradients && self.preview_renderer.is_shader() {
+            return false;
+        }
         if self.selected_tab != BuilderTab::Gradients || !self.image_adjustments.is_neutral() {
             return true;
         }

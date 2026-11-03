@@ -308,3 +308,39 @@ one texture-producing custom draw per cell. This avoids filling Metal's queue
 with uncommitted producer command buffers during frame preparation. Other
 texture-producer APIs retain their existing behavior; this app-side fix does
 not change the renderer's general preparation/submission contract.
+
+### Focused GPU image branch
+
+This branch starts before the PR116 migration and retains direct UI shaders,
+color controls and source-sized media. The graph/slot/global-budget migration is
+preserved on the older branches, outside this implementation.
+
+Select the matching local SDK without editing Luma:
+
+```sh
+python3 .github/scripts/dependencies.py configure --sdk ../xgpui-focused
+cargo run --features gpui_platform/runtime_shaders
+```
+
+Open **Media → Photo Viewer**. It provides Open photo, Fit, physical-pixel 1:1,
+pan, wheel zoom, GPU exposure and sRGB/P3 preview selection. An optional
+`--photo /absolute/path.png` supplies the initial photo when that page opens.
+The existing effects and color-control pages remain available.
+
+The viewer accepts bounded 8-bit decoded images (128 MiB RGBA source pixels,
+64 MiB encoded files). Embedded supported RGB matrix/TRC ICC profiles and EXIF
+orientation are resolved on a background task. Unsupported profiles/bit depths
+produce an error while keeping the current photo. Untagged images use sRGB.
+GPU pages, CPU source pixels and staging are separate allocations; this is a
+photo preview with sampling adjustments, not a RAW development engine.
+
+Run the explicit native correctness probe, which also checks retained source
+replacement and unchanged controls across output policies:
+
+```sh
+cargo run --features gpui_platform/runtime_shaders -- --photo-check /tmp/photo-check
+cargo run --features gpui_platform/runtime_shaders -- --photo /path/photo.png --photo-check /tmp/large-photo-check
+```
+
+Readback belongs only to diagnostics. Reports/captures do not measure displayed
+FPS. The six-image upload benchmark is unchanged from the app baseline.

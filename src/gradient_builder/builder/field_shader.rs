@@ -1,6 +1,9 @@
 //! Adapter between editor state and the app's promotable GPU field primitive.
+#[cfg(any(target_os = "macos", all(test, feature = "test-support")))]
 use super::*;
-use super::super::color_field::{ColorField, Output};
+use super::super::color_field::ColorField;
+#[cfg(target_os = "macos")]
+use super::super::color_field::Output;
 use gpui::{AnyElement, IntoElement, div, prelude::*};
 #[derive(Default)]
 pub(super) struct Cache {
@@ -23,7 +26,7 @@ impl Cache {
                 self.cached = Some((field, output, paint));
             }
             let paint = self.cached.as_ref().unwrap().2.clone();
-            return canvas(
+            canvas(
                 |_, _, _| (),
                 move |bounds, _, window, _| {
                     window.paint_custom(
@@ -33,7 +36,7 @@ impl Cache {
                 },
             )
             .size_full()
-            .into_any_element();
+            .into_any_element()
         }
         #[cfg(not(target_os = "macos"))]
         {

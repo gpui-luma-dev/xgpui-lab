@@ -280,12 +280,11 @@ impl GradientBuilder {
             .items(renderer_items())
             .selected_id("quads")
             .spawn(cx);
-        let mesh_palette_animate_button = radix::Button::new("mesh-animate-palette")
-            .look(&look).outline().label("Start").spawn(cx);
-        let mesh_palette_speed_slider = radix::Slider::new("mesh-palette-speed")
-            .look(&look).range(0.1..2.0).step(0.1).value(0.5).spawn(cx);
-        let mesh_cycle_button = radix::Button::new("mesh-cycle-palette")
-            .look(&look).outline().label("Cycle").spawn(cx);
+        let mesh_palette_animate_button =
+            radix::Button::new("mesh-animate-palette").look(&look).outline().label("Start").spawn(cx);
+        let mesh_palette_speed_slider =
+            radix::Slider::new("mesh-palette-speed").look(&look).range(0.1..2.0).step(0.1).value(0.5).spawn(cx);
+        let mesh_cycle_button = radix::Button::new("mesh-cycle-palette").look(&look).outline().label("Cycle").spawn(cx);
         let mesh_renderer_selector = radix::Selector::new("mesh-preview-renderer")
             .look(look.as_ref())
             .items(vec![
@@ -320,43 +319,63 @@ impl GradientBuilder {
             .step(1.0)
             .value(30.0)
             .spawn(cx);
-        let animate_angle_button = radix::Button::new("gradient-animate-angle")
+        let animate_angle_button =
+            radix::Button::new("gradient-animate-angle").look(&look).outline().label("Animate").spawn(cx);
+        let spread_speed_slider = radix::Slider::new("freeform-spread-speed")
+            .look(&look)
+            .range(0.1..2.0)
+            .step(0.05)
+            .value(0.25)
+            .spawn(cx);
+        let spread_animate_button = radix::Button::new("freeform-animate-spread")
             .look(&look)
             .outline()
-            .label("Animate")
+            .label("Animate spread")
             .spawn(cx);
-        let spread_speed_slider = radix::Slider::new("freeform-spread-speed")
-            .look(&look).range(0.1..2.0).step(0.05).value(0.25).spawn(cx);
-        let spread_animate_button = radix::Button::new("freeform-animate-spread")
-            .look(&look).outline().label("Animate spread").spawn(cx);
         let freeform_renderer_selector = radix::Selector::new("freeform-renderer")
-            .look(&look).items(vec![
+            .look(&look)
+            .items(vec![
                 gpui_luma::controls::selector::SelectorItem::new("cpu").label("CPU"),
                 gpui_luma::controls::selector::SelectorItem::new("gpu").label("GPU field"),
-            ]).selected_id("cpu").spawn(cx);
+            ])
+            .selected_id("cpu")
+            .spawn(cx);
         let freeform_mixing_selector = radix::Selector::new("freeform-mixing")
-            .look(&look).items(vec![
+            .look(&look)
+            .items(vec![
                 gpui_luma::controls::selector::SelectorItem::new("ordered").label("Ordered"),
                 gpui_luma::controls::selector::SelectorItem::new("normalized").label("Normalized"),
-            ]).selected_id("ordered").spawn(cx);
+            ])
+            .selected_id("ordered")
+            .spawn(cx);
         let field_background_slider = radix::Slider::new("field-background-weight")
-            .look(&look).range(0.0..2.0).step(0.05).value(0.25).spawn(cx);
+            .look(&look)
+            .range(0.0..2.0)
+            .step(0.05)
+            .value(0.25)
+            .spawn(cx);
         let freeform_p3_switch = radix::Switch::new("freeform-display-p3")
-            .look(&look).label("Display P3").checked(false)
+            .look(&look)
+            .label("Display P3")
+            .checked(false)
             .on_value_changed(cx, |this: &mut Self, on, cx| {
                 this.freeform_p3 = on;
                 this.sync_adjustment_support(cx);
                 let _ = this.ensure_preview_image_cache(this.preview_size, cx);
                 cx.notify();
-            }).spawn(cx);
+            })
+            .spawn(cx);
         let mesh_p3_switch = radix::Switch::new("mesh-display-p3")
-            .look(&look).label("Display P3").checked(false)
+            .look(&look)
+            .label("Display P3")
+            .checked(false)
             .on_value_changed(cx, |this: &mut Self, on, cx| {
                 this.mesh_p3 = on;
                 this.render_task = None;
                 this.sync_adjustment_support(cx);
                 cx.notify();
-            }).spawn(cx);
+            })
+            .spawn(cx);
         let p3_switch = radix::Switch::new("gradient-preview-color-space")
             .look(&look)
             .label("Display P3")
@@ -559,7 +578,9 @@ impl GradientBuilder {
         for (slider, saturation) in [(saturation_slider, true), (vibrance_slider, false)] {
             builder._subscriptions.push(cx.subscribe(&slider, move |this, _, event: &SliderEvent, cx| {
                 if let SliderEvent::Change { value, .. } | SliderEvent::Release { value, .. } = event {
-                    if !this.adjustments_supported() { return; }
+                    if !this.adjustments_supported() {
+                        return;
+                    }
                     if saturation {
                         this.image_adjustments.saturation = *value;
                     } else {
@@ -583,80 +604,116 @@ impl GradientBuilder {
                 cx.notify();
             }
         }));
-        builder._subscriptions.push(cx.subscribe(&animate_angle_button, |this, button, event: &ButtonEvent, cx| {
-            if matches!(event, ButtonEvent::Click) {
-                this.angle_animation = !this.angle_animation;
-                this.angle_last_frame = Instant::now();
-                button.update(cx, |button, cx| button.set_label(if this.angle_animation { "Stop" } else { "Animate" }, cx));
-                cx.notify();
-            }
-        }));
-        builder._subscriptions.push(cx.subscribe(&mesh_renderer_selector, |this, _, event: &SelectorEvent, cx| {
-            if let SelectorEvent::Change { item_id, .. } = event {
-                this.mesh_shader_enabled = item_id.as_ref() == "shader";
-                this.render_task = None;
-                this.sync_adjustment_support(cx);
-                let _ = this.ensure_preview_image_cache(this.preview_size, cx);
-                cx.notify();
-            }
-        }));
-        builder._subscriptions.push(cx.subscribe(&mesh_cycle_button, |this, _, event: &ButtonEvent, cx| {
-            if matches!(event, ButtonEvent::Click) { this.cycle_mesh_palette(cx); }
-        }));
-        builder._subscriptions.push(cx.subscribe(&mesh_palette_animate_button, |this, button, event: &ButtonEvent, cx| {
-            if matches!(event, ButtonEvent::Click) {
-                this.mesh_palette_animation = !this.mesh_palette_animation;
-                this.mesh_palette_last_frame = Instant::now();
-                button.update(cx, |button, cx| button.set_label(if this.mesh_palette_animation { "Stop" } else { "Start" }, cx));
-                cx.notify();
-            }
-        }));
-        builder._subscriptions.push(cx.subscribe(&mesh_palette_speed_slider, |this, _, event: &SliderEvent, cx| {
-            if let SliderEvent::Change { value, .. } | SliderEvent::Release { value, .. } = event {
-                this.mesh_palette_speed = *value;
-                cx.notify();
-            }
-        }));
-        builder._subscriptions.push(cx.subscribe(&freeform_renderer_selector, |this,_,event:&SelectorEvent,cx| {
-            if let SelectorEvent::Change {item_id,..}=event {
-                this.freeform_gpu=item_id.as_ref()=="gpu";
-                this.render_task=None;
-                this.preview_image_cache=None;
-                this.sync_adjustment_support(cx);
-                let _=this.ensure_preview_image_cache(this.preview_size,cx);
-                cx.notify();
-            }
-        }));
-        builder._subscriptions.push(cx.subscribe(&freeform_mixing_selector, |this,_,event:&SelectorEvent,cx| {
-            if let SelectorEvent::Change {item_id,..}=event {
-                this.freeform_mixing=if item_id.as_ref()=="normalized" {super::color_field::Mixing::Normalized} else {super::color_field::Mixing::Ordered};
-                this.preview_image_cache=None;
-                let _=this.ensure_preview_image_cache(this.preview_size,cx);
-                cx.notify();
-            }
-        }));
-        builder._subscriptions.push(cx.subscribe(&field_background_slider, |this,_,event:&SliderEvent,cx| {
-            if let SliderEvent::Change {value,..}|SliderEvent::Release {value,..}=event {
-                this.field_background_weight=*value;
-                this.preview_image_cache=None;
-                let _=this.ensure_preview_image_cache(this.preview_size,cx);
-                cx.notify();
-            }
-        }));
-        builder._subscriptions.push(cx.subscribe(&spread_animate_button, |this,button,event:&ButtonEvent,cx| {
-            if matches!(event,ButtonEvent::Click) {
-                this.spread_animation = !this.spread_animation;
-                this.spread_last_frame = Instant::now();
-                if this.spread_animation {
-                    this.spread_phase = ((this.spread_percent.clamp(50.,100.)-75.)/25.).acos();
+        builder
+            ._subscriptions
+            .push(cx.subscribe(&animate_angle_button, |this, button, event: &ButtonEvent, cx| {
+                if matches!(event, ButtonEvent::Click) {
+                    this.angle_animation = !this.angle_animation;
+                    this.angle_last_frame = Instant::now();
+                    button.update(cx, |button, cx| {
+                        button.set_label(if this.angle_animation { "Stop" } else { "Animate" }, cx)
+                    });
+                    cx.notify();
                 }
-                button.update(cx,|button,cx|button.set_label(if this.spread_animation {"Stop spread"} else {"Animate spread"},cx));
-                cx.notify();
+            }));
+        builder
+            ._subscriptions
+            .push(cx.subscribe(&mesh_renderer_selector, |this, _, event: &SelectorEvent, cx| {
+                if let SelectorEvent::Change { item_id, .. } = event {
+                    this.mesh_shader_enabled = item_id.as_ref() == "shader";
+                    this.render_task = None;
+                    this.sync_adjustment_support(cx);
+                    let _ = this.ensure_preview_image_cache(this.preview_size, cx);
+                    cx.notify();
+                }
+            }));
+        builder._subscriptions.push(cx.subscribe(&mesh_cycle_button, |this, _, event: &ButtonEvent, cx| {
+            if matches!(event, ButtonEvent::Click) {
+                this.cycle_mesh_palette(cx);
             }
         }));
-        builder._subscriptions.push(cx.subscribe(&spread_speed_slider, |this,_,event:&SliderEvent,cx| {
-            if let SliderEvent::Change {value,..}|SliderEvent::Release {value,..}=event {
-                this.spread_speed=*value;
+        builder._subscriptions.push(cx.subscribe(
+            &mesh_palette_animate_button,
+            |this, button, event: &ButtonEvent, cx| {
+                if matches!(event, ButtonEvent::Click) {
+                    this.mesh_palette_animation = !this.mesh_palette_animation;
+                    this.mesh_palette_last_frame = Instant::now();
+                    button.update(cx, |button, cx| {
+                        button.set_label(if this.mesh_palette_animation { "Stop" } else { "Start" }, cx)
+                    });
+                    cx.notify();
+                }
+            },
+        ));
+        builder
+            ._subscriptions
+            .push(cx.subscribe(&mesh_palette_speed_slider, |this, _, event: &SliderEvent, cx| {
+                if let SliderEvent::Change { value, .. } | SliderEvent::Release { value, .. } = event {
+                    this.mesh_palette_speed = *value;
+                    cx.notify();
+                }
+            }));
+        builder
+            ._subscriptions
+            .push(cx.subscribe(&freeform_renderer_selector, |this, _, event: &SelectorEvent, cx| {
+                if let SelectorEvent::Change { item_id, .. } = event {
+                    this.freeform_gpu = item_id.as_ref() == "gpu";
+                    this.render_task = None;
+                    this.preview_image_cache = None;
+                    this.sync_adjustment_support(cx);
+                    let _ = this.ensure_preview_image_cache(this.preview_size, cx);
+                    cx.notify();
+                }
+            }));
+        builder
+            ._subscriptions
+            .push(cx.subscribe(&freeform_mixing_selector, |this, _, event: &SelectorEvent, cx| {
+                if let SelectorEvent::Change { item_id, .. } = event {
+                    this.freeform_mixing = if item_id.as_ref() == "normalized" {
+                        super::color_field::Mixing::Normalized
+                    } else {
+                        super::color_field::Mixing::Ordered
+                    };
+                    this.preview_image_cache = None;
+                    let _ = this.ensure_preview_image_cache(this.preview_size, cx);
+                    cx.notify();
+                }
+            }));
+        builder
+            ._subscriptions
+            .push(cx.subscribe(&field_background_slider, |this, _, event: &SliderEvent, cx| {
+                if let SliderEvent::Change { value, .. } | SliderEvent::Release { value, .. } = event {
+                    this.field_background_weight = *value;
+                    this.preview_image_cache = None;
+                    let _ = this.ensure_preview_image_cache(this.preview_size, cx);
+                    cx.notify();
+                }
+            }));
+        builder
+            ._subscriptions
+            .push(cx.subscribe(&spread_animate_button, |this, button, event: &ButtonEvent, cx| {
+                if matches!(event, ButtonEvent::Click) {
+                    this.spread_animation = !this.spread_animation;
+                    this.spread_last_frame = Instant::now();
+                    if this.spread_animation {
+                        this.spread_phase = ((this.spread_percent.clamp(50., 100.) - 75.) / 25.).acos();
+                    }
+                    button.update(cx, |button, cx| {
+                        button.set_label(
+                            if this.spread_animation {
+                                "Stop spread"
+                            } else {
+                                "Animate spread"
+                            },
+                            cx,
+                        )
+                    });
+                    cx.notify();
+                }
+            }));
+        builder._subscriptions.push(cx.subscribe(&spread_speed_slider, |this, _, event: &SliderEvent, cx| {
+            if let SliderEvent::Change { value, .. } | SliderEvent::Release { value, .. } = event {
+                this.spread_speed = *value;
                 cx.notify();
             }
         }));
