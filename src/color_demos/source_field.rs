@@ -10,7 +10,8 @@ use gpui_luma_color::{
 };
 use xgpui_color::{EncodedRgb, GamutMapping, LinearRgb, RgbSpace};
 
-pub(super) const SPACES: [RgbSpace; 4] = [RgbSpace::Srgb, RgbSpace::DisplayP3, RgbSpace::Rec2020, RgbSpace::AdobeRgb1998];
+pub(super) const SPACES: [RgbSpace; 4] =
+    [RgbSpace::Srgb, RgbSpace::DisplayP3, RgbSpace::Rec2020, RgbSpace::AdobeRgb1998];
 pub(super) const NAMES: [&str; 4] = ["sRGB", "Display P3", "Rec.2020", "Adobe RGB (1998)"];
 
 pub(super) fn srgb_reference(rgb: [f64; 3], space: RgbSpace) -> Result<Rgba, xgpui_color::ColorError> {
@@ -198,9 +199,11 @@ mod tests {
         let rec2020 = Coordinates::new([0., 1., 0.], RgbSpace::Rec2020).unwrap();
         assert!(rec2020.outside_srgb);
         assert!(rec2020.srgb.iter().any(|value| *value < 0. || *value > 1.));
-        assert!([rec2020.srgb_reference.r, rec2020.srgb_reference.g, rec2020.srgb_reference.b]
-            .into_iter()
-            .all(|value| (0. ..=1.).contains(&value)));
+        assert!(
+            [rec2020.srgb_reference.r, rec2020.srgb_reference.g, rec2020.srgb_reference.b]
+                .into_iter()
+                .all(|value| (0. ..=1.).contains(&value))
+        );
         assert!(!outside_gamut(LinearRgb::new(RgbSpace::Srgb, [-1e-8, 0.5, 1. + 1e-8]).unwrap()));
         assert!(outside_gamut(LinearRgb::new(RgbSpace::Srgb, [-1e-4, 0.5, 1.]).unwrap()));
     }

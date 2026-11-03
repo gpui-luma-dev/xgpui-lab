@@ -82,10 +82,10 @@ impl ExtensionPane {
         };
         if self.active_demo.is_some() {
             self.deactivate(cx);
-            if page == "Photo Viewer" {
-                if let Some(photo) = &self.photo {
-                    photo.update(cx, |photo, cx| photo.activate(cx));
-                }
+            if page == "Photo Viewer"
+                && let Some(photo) = &self.photo
+            {
+                photo.update(cx, |photo, cx| photo.activate(cx));
             }
             cx.notify();
             return;

@@ -166,16 +166,20 @@ impl GradientBuilder {
 }
 
 // Smooth reversals at 50% and 100%; the speed control sets the phase rate.
-pub(super) fn animated_spread(phase: f32) -> f32 { 75. + 25. * phase.cos() }
+pub(super) fn animated_spread(phase: f32) -> f32 {
+    75. + 25. * phase.cos()
+}
 #[cfg(test)]
 mod animation_tests {
     use super::*;
     #[test]
     fn spread_animation_reverses_at_limits() {
-        assert_eq!(animated_spread(0.),100.);
-        assert_eq!(animated_spread(std::f32::consts::PI),50.);
-        assert_eq!(animated_spread(std::f32::consts::TAU),100.);
-        assert!((animated_spread(std::f32::consts::FRAC_PI_2)-75.).abs()<0.00001);
-        for step in 0..1000 {assert!((50. ..=100.).contains(&animated_spread(step as f32*0.01)));}
+        assert_eq!(animated_spread(0.), 100.);
+        assert_eq!(animated_spread(std::f32::consts::PI), 50.);
+        assert_eq!(animated_spread(std::f32::consts::TAU), 100.);
+        assert!((animated_spread(std::f32::consts::FRAC_PI_2) - 75.).abs() < 0.00001);
+        for step in 0..1000 {
+            assert!((50. ..=100.).contains(&animated_spread(step as f32 * 0.01)));
+        }
     }
 }

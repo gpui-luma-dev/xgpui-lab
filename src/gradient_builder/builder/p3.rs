@@ -23,9 +23,13 @@ pub(super) fn available(window: &Window) -> bool {
 
 fn source(kind: GradientType, stops: &[(f32, gpui::Hsla)]) -> String {
     let position = match kind {
-        GradientType::Linear => "let t = clamp(0.5 + dot(input.uv - vec2<f32>(0.5), vec2<f32>(sin(p.angle), -cos(p.angle))), 0.0, 1.0);",
+        GradientType::Linear => {
+            "let t = clamp(0.5 + dot(input.uv - vec2<f32>(0.5), vec2<f32>(sin(p.angle), -cos(p.angle))), 0.0, 1.0);"
+        }
         GradientType::Radial => "let t = clamp(length(input.uv - vec2<f32>(0.5)) / 0.70710678118, 0.0, 1.0);",
-        GradientType::Conic => "let d = (input.uv - vec2<f32>(0.5)) * input.size; let turn = (atan2(d.x, -d.y) - p.angle) / 6.28318530718; let t = fract(turn + 2.0);",
+        GradientType::Conic => {
+            "let d = (input.uv - vec2<f32>(0.5)) * input.size; let turn = (atan2(d.x, -d.y) - p.angle) / 6.28318530718; let t = fract(turn + 2.0);"
+        }
     };
     let color = |c: gpui::Hsla| {
         let rgb = c.to_rgb();
@@ -74,7 +78,9 @@ impl Cache {
             Ok(program) => canvas(
                 |_, _, _| (),
                 move |bounds, _, window, _| {
-                    if let Err(error) = window.paint_custom_shader(bounds, &program, Parameters { angle: angle.to_radians() }) {
+                    if let Err(error) =
+                        window.paint_custom_shader(bounds, &program, Parameters { angle: angle.to_radians() })
+                    {
                         tracing::error!("P3 gradient: {error:#}");
                     }
                 },

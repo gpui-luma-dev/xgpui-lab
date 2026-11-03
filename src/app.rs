@@ -234,10 +234,10 @@ impl XgpuiLabApp {
                 )
                 .with_modifier(move |row, model| {
                     let colors = entry_look.interaction_colors();
-                    row.w_full()
-                        .justify_start()
-                        .text_align(gpui::TextAlign::Left)
-                        .when_some(colors.background(paint_selected.load(Ordering::Relaxed), model.state), |row, color| row.bg(color))
+                    row.w_full().justify_start().text_align(gpui::TextAlign::Left).when_some(
+                        colors.background(paint_selected.load(Ordering::Relaxed), model.state),
+                        |row, color| row.bg(color),
+                    )
                 });
                 button.update(cx, |button, cx| button.set_template(Arc::new(template), cx));
                 rows.push(button.clone());
@@ -375,7 +375,9 @@ impl XgpuiLabApp {
         self.active = workspace;
         self.active_page = page;
         let view: gpui::AnyView = match workspace {
-            Workspace::ColorGamut => self.color_gamut.as_ref()
+            Workspace::ColorGamut => self
+                .color_gamut
+                .as_ref()
                 .map(|view| view.clone().into())
                 .unwrap_or_else(|| self.content.borrow().clone()),
             Workspace::Gradients => {

@@ -2,6 +2,8 @@ use super::*;
 use gpui::{AnyElement, Corners, CustomGeometry, ImageSource, IntoElement, canvas, div, img, prelude::*};
 use xgpui_shader::MeshGradient;
 
+type Guides = (Vec<MeshPoint>, Size<Pixels>, Option<Arc<RenderImage>>);
+
 #[derive(Default)]
 pub(super) struct Cache {
     paint: Option<Arc<MeshGradient>>,
@@ -9,10 +11,17 @@ pub(super) struct Cache {
     wide: Option<(Arc<MeshGradient>, Arc<super::mesh_p3::Paint>)>,
     #[cfg(target_os = "macos")]
     pipeline: Arc<super::mesh_p3::Pipeline>,
-    guides: Option<(Vec<MeshPoint>, Size<Pixels>, Option<Arc<RenderImage>>)>,
+    guides: Option<Guides>,
 }
 impl Cache {
-    pub(super) fn element(&mut self, points: &[MeshPoint], extent: Size<Pixels>, background: gpui::Hsla, guides: bool, wide: bool) -> AnyElement {
+    pub(super) fn element(
+        &mut self,
+        points: &[MeshPoint],
+        extent: Size<Pixels>,
+        background: gpui::Hsla,
+        guides: bool,
+        wide: bool,
+    ) -> AnyElement {
         let result = super::super::paint::shader_mesh_grid(points).and_then(|grid| {
             if self.paint.as_ref().is_none_or(|p| p.grid() != &grid) {
                 let next = match &self.paint {
@@ -31,7 +40,8 @@ impl Cache {
         #[cfg(target_os = "macos")]
         if wide {
             if self.wide.as_ref().is_none_or(|(old, _)| !Arc::ptr_eq(old, &paint)) {
-                self.wide = Some((paint.clone(), Arc::new(super::mesh_p3::Paint::new(paint.clone(), self.pipeline.clone()))));
+                self.wide =
+                    Some((paint.clone(), Arc::new(super::mesh_p3::Paint::new(paint.clone(), self.pipeline.clone()))));
             }
             content = self.wide.as_ref().unwrap().1.clone();
         }
@@ -39,15 +49,32 @@ impl Cache {
         let _ = wide;
         let guide_image = if guides {
             if self.guides.as_ref().is_none_or(|(old, size, _)| old != points || *size != extent) {
-                self.guides = Some((points.to_vec(), extent, super::super::paint::rasterize_mesh_guides(extent, points)));
+                self.guides =
+                    Some((points.to_vec(), extent, super::super::paint::rasterize_mesh_guides(extent, points)));
             }
             self.guides.as_ref().and_then(|(_, _, image)| image.clone())
-        } else { None };
-        div().size_full().relative().bg(background)
-            .child(canvas(|_, _, _| (), move |bounds, _, window, _| {
-                window.paint_custom(CustomGeometry::RoundedRect { bounds, corner_radii: Corners::default() }, content.clone());
-            }).size_full())
-            .when_some(guide_image, |this, image| this.child(img(ImageSource::Render(image)).absolute().inset_0().size_full()))
+        } else {
+            None
+        };
+        div()
+            .size_full()
+            .relative()
+            .bg(background)
+            .child(
+                canvas(
+                    |_, _, _| (),
+                    move |bounds, _, window, _| {
+                        window.paint_custom(
+                            CustomGeometry::RoundedRect { bounds, corner_radii: Corners::default() },
+                            content.clone(),
+                        );
+                    },
+                )
+                .size_full(),
+            )
+            .when_some(guide_image, |this, image| {
+                this.child(img(ImageSource::Render(image)).absolute().inset_0().size_full())
+            })
             .into_any_element()
     }
 }
@@ -64,7 +91,8 @@ mod tests {
         let (rows, cols) = super::super::super::paint::mesh_dimensions(&points).unwrap();
         assert_eq!((grid.height(), grid.width()), (rows as u32, cols as u32));
         for (index, p) in grid.points().iter().enumerate() {
-            let original = points.iter().find(|p| p.row as usize == index / cols && p.col as usize == index % cols).unwrap();
+            let original =
+                points.iter().find(|p| p.row as usize == index / cols && p.col as usize == index % cols).unwrap();
             assert_eq!(p.position, [original.u, original.v]);
             let c = original.color.to_rgb();
             assert_eq!(p.color, [c.r, c.g, c.b]);
@@ -105,7 +133,10 @@ mod tests {
             });
         }
         view.update(cx, |view, cx| {
-            view.handle_top_tabs_event(&TabsEvent::Activate { tab_id: "freeform".into(), label: "Freeform".into() }, cx);
+            view.handle_top_tabs_event(
+                &TabsEvent::Activate { tab_id: "freeform".into(), label: "Freeform".into() },
+                cx,
+            );
             assert!(view.uses_render_preview(cx));
             assert!(view.adjustments_supported());
         });

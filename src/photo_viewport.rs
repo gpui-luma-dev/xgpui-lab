@@ -197,10 +197,10 @@ impl PhotoViewport {
             prompt: Some("Open photo".into()),
         });
         cx.spawn(async move |this, cx| {
-            if let Ok(Ok(Some(paths))) = picker.await {
-                if let Some(path) = paths.into_iter().next() {
-                    let _ = this.update(cx, |this, cx| this.load(Some(path), cx));
-                }
+            if let Ok(Ok(Some(paths))) = picker.await
+                && let Some(path) = paths.into_iter().next()
+            {
+                let _ = this.update(cx, |this, cx| this.load(Some(path), cx));
             }
         })
         .detach();
@@ -213,12 +213,12 @@ impl PhotoViewport {
     }
     pub fn activate(&mut self, cx: &mut Context<Self>) {
         self.active = true;
-        if self.canvas.is_none() {
-            if let Some(source) = &self.source {
-                match make_canvas(source.clone()) {
-                    Ok(canvas) => self.canvas = Some(canvas),
-                    Err(error) => self.error = Some(error.to_string()),
-                }
+        if self.canvas.is_none()
+            && let Some(source) = &self.source
+        {
+            match make_canvas(source.clone()) {
+                Ok(canvas) => self.canvas = Some(canvas),
+                Err(error) => self.error = Some(error.to_string()),
             }
         }
         cx.notify();
@@ -325,13 +325,13 @@ impl Render for PhotoViewport {
                     |_, _, _| (),
                     move |bounds, (), window, cx| {
                         let _ = canvas_entity.update(cx, |this, cx| {
-                            if let Some(canvas) = &mut this.canvas {
-                                if let Err(error) = canvas.paint(bounds, window, paint) {
-                                    let message = error.to_string();
-                                    if this.error.as_ref() != Some(&message) {
-                                        this.error = Some(message);
-                                        cx.notify();
-                                    }
+                            if let Some(canvas) = &mut this.canvas
+                                && let Err(error) = canvas.paint(bounds, window, paint)
+                            {
+                                let message = error.to_string();
+                                if this.error.as_ref() != Some(&message) {
+                                    this.error = Some(message);
+                                    cx.notify();
                                 }
                             }
                         });
@@ -386,7 +386,7 @@ pub fn run_check(cx: &mut App, output: PathBuf) -> Result<()> {
                         }))
                     })??;
                     let image = cx.update_window(handle.into(), |_, window, cx| -> Result<_> {
-                        window.refresh(); window.draw(cx).clear(cx); Ok(window.render_to_image()?)
+                        window.refresh(); window.draw(cx).clear(cx); window.render_to_image()
                     })??;
                     if ready { return Ok(image); }
                     ensure!(std::time::Instant::now() < deadline, "photo readiness timeout");
@@ -432,7 +432,7 @@ pub fn run_check(cx: &mut App, output: PathBuf) -> Result<()> {
                 photo.source = Some(source); photo.zoom = 0.; photo.recenter(); cx.notify(); Ok(())
             })??;
             let retained = cx.update_window(handle.into(), |_, window, cx| -> Result<_> {
-                window.refresh(); window.draw(cx).clear(cx); Ok(window.render_to_image()?)
+                window.refresh(); window.draw(cx).clear(cx); window.render_to_image()
             })??;
             ensure!(handle.update(cx, |photo, _, _| photo.canvas.as_ref().unwrap().displayed_source())? == previous_source,
                 "replacement retired the displayed source before its successor was ready");
@@ -446,7 +446,7 @@ pub fn run_check(cx: &mut App, output: PathBuf) -> Result<()> {
             Ok(())
         }.await;
         let _ = cx.update_window(handle.into(), |_, window, _| window.remove_window());
-        match result { Ok(()) => { let _ = cx.update(|cx| cx.quit()); }, Err(error) => { eprintln!("Photo check: {error:#}"); std::process::exit(1); } }
+        match result { Ok(()) => { cx.update(|cx| cx.quit()); }, Err(error) => { eprintln!("Photo check: {error:#}"); std::process::exit(1); } }
     }).detach();
     Ok(())
 }

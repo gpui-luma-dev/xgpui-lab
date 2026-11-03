@@ -304,7 +304,9 @@ pub(super) fn apply_mesh_palette(points: &mut [MeshPoint], palette: usize) {
         [0x10002b, 0x00f5d4, 0x7b2cbf, 0xfee440],
     ];
     let colors = COLORS[palette % COLORS.len()].map(|hex| gpui::Hsla::from(gpui::rgb(hex)));
-    let Some((rows, cols)) = super::super::paint::mesh_dimensions(points) else { return; };
+    let Some((rows, cols)) = super::super::paint::mesh_dimensions(points) else {
+        return;
+    };
     for point in points {
         let u = point.col as f32 / (cols - 1) as f32;
         let v = point.row as f32 / (rows - 1) as f32;
@@ -316,7 +318,9 @@ pub(super) fn apply_mesh_palette(points: &mut [MeshPoint], palette: usize) {
 
 pub(super) fn blend_mesh_palettes(points: &mut [MeshPoint], palette: usize, phase: f32) {
     apply_mesh_palette(points, palette);
-    if phase <= 0. { return; }
+    if phase <= 0. {
+        return;
+    }
     let mut next = points.to_vec();
     apply_mesh_palette(&mut next, (palette + 1) % MESH_PALETTE_NAMES.len());
     for (point, next) in points.iter_mut().zip(next) {
@@ -329,7 +333,8 @@ pub(super) fn default_mesh_points(preset: MeshGridPreset) -> Vec<MeshPoint> {
     let mut points: Vec<_> = (0..rows)
         .flat_map(|row| {
             (0..cols).map(move |col| MeshPoint {
-                row: row as u8, col: col as u8,
+                row: row as u8,
+                col: col as u8,
                 u: col as f32 / (cols - 1) as f32,
                 v: row as f32 / (rows - 1) as f32,
                 color: gpui::white(),
@@ -398,7 +403,12 @@ mod palette_tests {
     use super::*;
     #[test]
     fn grid_defaults_differ_and_five_palettes_preserve_geometry() {
-        let presets = [MeshGridPreset::SampleThreeByFour, MeshGridPreset::TwoByTwo, MeshGridPreset::ThreeByThree, MeshGridPreset::FourByFour];
+        let presets = [
+            MeshGridPreset::SampleThreeByFour,
+            MeshGridPreset::TwoByTwo,
+            MeshGridPreset::ThreeByThree,
+            MeshGridPreset::FourByFour,
+        ];
         let defaults: Vec<_> = presets.iter().map(|preset| default_mesh_points(*preset)[0].color).collect();
         for (i, color) in defaults.iter().enumerate() {
             assert!(!defaults[..i].contains(color));
@@ -445,7 +455,8 @@ mod animation_tests {
             view.advance_mesh_palette(1.);
             assert_eq!(view.mesh_palette, 4);
             assert_eq!(view.mesh_palette_phase, 0.5);
-            let expected = super::super::super::paint::color_at_position(&[(0., start[0].color), (1., end[0].color)], 0.5);
+            let expected =
+                super::super::super::paint::color_at_position(&[(0., start[0].color), (1., end[0].color)], 0.5);
             assert_eq!(view.mesh_points[0].color, expected);
             view.advance_mesh_palette(1.);
             assert_eq!(view.mesh_palette, 0);

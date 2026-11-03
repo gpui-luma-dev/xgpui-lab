@@ -401,10 +401,15 @@ mod gpu_tests {
                         }
                     }
                     if source == 0 || saturation == 0. {
-                        anyhow::ensure!(changed == 0, "no contour for an entirely sRGB field: source={source}, saturation={saturation}, scale={scale}, changed={changed}");
+                        anyhow::ensure!(
+                            changed == 0,
+                            "no contour for an entirely sRGB field: source={source}, saturation={saturation}, scale={scale}, changed={changed}"
+                        );
                     } else {
-                        anyhow::ensure!(changed > 0 && changed < width * height / 2,
-                            "wide field must retain visible colors between stripes, source={source}, saturation={saturation}, changed={changed}");
+                        anyhow::ensure!(
+                            changed > 0 && changed < width * height / 2,
+                            "wide field must retain visible colors between stripes, source={source}, saturation={saturation}, changed={changed}"
+                        );
                     }
                 }
             }

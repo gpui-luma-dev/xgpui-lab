@@ -40,11 +40,17 @@ pub(crate) struct InteractionColors {
 }
 impl InteractionColors {
     pub fn background(self, selected: bool, state: gpui_luma::theme::InteractionState) -> Option<gpui::Hsla> {
-        if state.disabled { None }
-        else if state.pressed { Some(self.pressed) }
-        else if state.hovered || state.focused { Some(self.hovered) }
-        else if selected { Some(self.selected) }
-        else { None }
+        if state.disabled {
+            None
+        } else if state.pressed {
+            Some(self.pressed)
+        } else if state.hovered || state.focused {
+            Some(self.hovered)
+        } else if selected {
+            Some(self.selected)
+        } else {
+            None
+        }
     }
 }
 

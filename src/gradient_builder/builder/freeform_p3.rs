@@ -10,14 +10,10 @@ pub(super) struct Cache {
 }
 fn straight_bgra(image: &RenderImage) -> anyhow::Result<Vec<u8>> {
     let mut bytes = image.as_bytes(0).ok_or_else(|| anyhow::anyhow!("Freeform pixels unavailable"))?.to_vec();
-    for pixel in bytes.chunks_exact_mut(4) {
+    for pixel in bytes.as_chunks_mut::<4>().0 {
         let alpha = pixel[3] as u32;
         for channel in &mut pixel[..3] {
-            *channel = if alpha == 0 {
-                0
-            } else {
-                ((*channel as u32 * 255 + alpha / 2) / alpha).min(255) as u8
-            };
+            *channel = (*channel as u32 * 255 + alpha / 2).checked_div(alpha).unwrap_or(0).min(255) as u8;
         }
     }
     Ok(bytes)
@@ -88,7 +84,7 @@ impl Cache {
                 self.cached = Some((image, Arc::new(super::mesh_p3::Paint::new(source, self.pipeline.clone()))));
             }
             let paint = self.cached.as_ref().unwrap().1.clone();
-            return canvas(
+            canvas(
                 |_, _, _| (),
                 move |bounds, _, window, _| {
                     window.paint_custom(
@@ -98,7 +94,7 @@ impl Cache {
                 },
             )
             .size_full()
-            .into_any_element();
+            .into_any_element()
         }
         #[cfg(not(target_os = "macos"))]
         {

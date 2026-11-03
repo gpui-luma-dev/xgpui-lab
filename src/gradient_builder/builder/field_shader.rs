@@ -23,7 +23,7 @@ impl Cache {
                 self.cached = Some((field, output, paint));
             }
             let paint = self.cached.as_ref().unwrap().2.clone();
-            return canvas(
+            canvas(
                 |_, _, _| (),
                 move |bounds, _, window, _| {
                     window.paint_custom(
@@ -33,7 +33,7 @@ impl Cache {
                 },
             )
             .size_full()
-            .into_any_element();
+            .into_any_element()
         }
         #[cfg(not(target_os = "macos"))]
         {
