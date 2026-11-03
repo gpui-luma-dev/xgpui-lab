@@ -13,7 +13,11 @@ fn straight_bgra(image: &RenderImage) -> anyhow::Result<Vec<u8>> {
     for pixel in bytes.chunks_exact_mut(4) {
         let alpha = pixel[3] as u32;
         for channel in &mut pixel[..3] {
-            *channel = if alpha == 0 { 0 } else { ((*channel as u32 * 255 + alpha / 2) / alpha).min(255) as u8 };
+            *channel = if alpha == 0 {
+                0
+            } else {
+                ((*channel as u32 * 255 + alpha / 2) / alpha).min(255) as u8
+            };
         }
     }
     Ok(bytes)
@@ -23,23 +27,47 @@ mod metal {
     use super::*;
     use anyhow::Context as _;
     use gpui::{CustomContent, DevicePixels};
-    use gpui_apple::{custom_draw::{MetalCustomContext, MetalCustomOutput}, metal::*};
+    use gpui_apple::{
+        custom_draw::{MetalCustomContext, MetalCustomOutput},
+        metal::*,
+    };
     #[derive(Debug)]
-    pub(super) struct Source { pub size: Size<DevicePixels>, pub bytes: Vec<u8> }
+    pub(super) struct Source {
+        pub size: Size<DevicePixels>,
+        pub bytes: Vec<u8>,
+    }
     impl CustomContent for Source {
-        fn prepare(&self, backend: &dyn std::any::Any, _: Size<DevicePixels>) -> anyhow::Result<Box<dyn std::any::Any>> {
+        fn prepare(
+            &self,
+            backend: &dyn std::any::Any,
+            _: Size<DevicePixels>,
+        ) -> anyhow::Result<Box<dyn std::any::Any>> {
             let ctx = backend.downcast_ref::<MetalCustomContext>().context("P3 Freeform requires native Metal")?;
             let descriptor = TextureDescriptor::new();
-            unsafe { descriptor.setWidth(self.size.width.0 as usize); descriptor.setHeight(self.size.height.0 as usize); }
+            unsafe {
+                descriptor.setWidth(self.size.width.0 as usize);
+                descriptor.setHeight(self.size.height.0 as usize);
+            }
             descriptor.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
             descriptor.setUsage(MTLTextureUsage::ShaderRead);
             descriptor.setStorageMode(MTLStorageMode::Shared);
-            let texture = ctx.device.newTextureWithDescriptor(&descriptor).context("Freeform source allocation failed")?;
+            let texture =
+                ctx.device.newTextureWithDescriptor(&descriptor).context("Freeform source allocation failed")?;
             // Validated RenderImage dimensions and tightly packed BGRA bytes.
             unsafe {
                 texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
-                    MTLRegion { origin: MTLOrigin { x: 0, y: 0, z: 0 }, size: MTLSize { width: self.size.width.0 as usize, height: self.size.height.0 as usize, depth: 1 } },
-                    0, std::ptr::NonNull::new(self.bytes.as_ptr() as *mut std::ffi::c_void).context("Empty freeform source")?, self.size.width.0 as usize * 4,
+                    MTLRegion {
+                        origin: MTLOrigin { x: 0, y: 0, z: 0 },
+                        size: MTLSize {
+                            width: self.size.width.0 as usize,
+                            height: self.size.height.0 as usize,
+                            depth: 1,
+                        },
+                    },
+                    0,
+                    std::ptr::NonNull::new(self.bytes.as_ptr() as *mut std::ffi::c_void)
+                        .context("Empty freeform source")?,
+                    self.size.width.0 as usize * 4,
                 );
             }
             Ok(Box::new(MetalCustomOutput { texture, commands: Vec::new() }))
@@ -60,12 +88,23 @@ impl Cache {
                 self.cached = Some((image, Arc::new(super::mesh_p3::Paint::new(source, self.pipeline.clone()))));
             }
             let paint = self.cached.as_ref().unwrap().1.clone();
-            return canvas(|_, _, _| (), move |bounds, _, window, _| {
-                window.paint_custom(CustomGeometry::RoundedRect { bounds, corner_radii: Corners::default() }, paint.clone());
-            }).size_full().into_any_element();
+            return canvas(
+                |_, _, _| (),
+                move |bounds, _, window, _| {
+                    window.paint_custom(
+                        CustomGeometry::RoundedRect { bounds, corner_radii: Corners::default() },
+                        paint.clone(),
+                    );
+                },
+            )
+            .size_full()
+            .into_any_element();
         }
         #[cfg(not(target_os = "macos"))]
-        { let _ = image; div().child("P3 Freeform requires native Metal").into_any_element() }
+        {
+            let _ = image;
+            div().child("P3 Freeform requires native Metal").into_any_element()
+        }
     }
 }
 #[cfg(test)]
@@ -73,7 +112,9 @@ mod tests {
     use super::*;
     #[test]
     fn upload_unassociates_alpha_and_preserves_bgra_order() {
-        let image = RenderImage::new(smallvec::smallvec![image::Frame::new(image::RgbaImage::from_raw(3, 1, vec![32, 64, 96, 128, 0, 0, 0, 0, 10, 20, 30, 255]).unwrap())]);
+        let image = RenderImage::new(smallvec::smallvec![image::Frame::new(
+            image::RgbaImage::from_raw(3, 1, vec![32, 64, 96, 128, 0, 0, 0, 0, 10, 20, 30, 255]).unwrap()
+        )]);
         assert_eq!(straight_bgra(&image).unwrap(), vec![64, 128, 191, 128, 0, 0, 0, 0, 10, 20, 30, 255]);
     }
 }
@@ -82,15 +123,20 @@ mod tests {
 mod native_tests {
     use super::*;
     use gpui::CustomContent;
-    use gpui_apple::{custom_draw::{MetalCustomContext, MetalWideSdrOutput}, metal::*};
+    use gpui_apple::{
+        custom_draw::{MetalCustomContext, MetalWideSdrOutput},
+        metal::*,
+    };
     #[test]
     #[ignore = "requires a native Metal device"]
     fn native_freeform_p3_upload_and_scaled_preparation() {
         objc2::rc::autoreleasepool(|_| {
             let device = MTLCreateSystemDefaultDevice().expect("Metal device");
             let queue = device.newCommandQueue().expect("Metal queue");
-            let ctx = MetalCustomContext { device, queue };
-            let image = Arc::new(RenderImage::new(smallvec::smallvec![image::Frame::new(image::RgbaImage::from_raw(2, 1, vec![0, 0, 255, 255, 32, 64, 96, 128]).unwrap())]));
+            let ctx = MetalCustomContext::new(device, queue);
+            let image = Arc::new(RenderImage::new(smallvec::smallvec![image::Frame::new(
+                image::RgbaImage::from_raw(2, 1, vec![0, 0, 255, 255, 32, 64, 96, 128]).unwrap()
+            )]));
             let mut cache = Cache::default();
             let _ = cache.element(image.clone());
             let first = cache.cached.as_ref().unwrap().1.clone();
@@ -113,7 +159,10 @@ mod control_tests {
         let (view, cx) = app.add_window_view(|_, cx| GradientBuilder::new(crate::theme::default_look(), cx));
         cx.run_until_parked();
         view.update(cx, |view, cx| {
-            view.handle_top_tabs_event(&TabsEvent::Activate { tab_id: "freeform".into(), label: "Freeform".into() }, cx);
+            view.handle_top_tabs_event(
+                &TabsEvent::Activate { tab_id: "freeform".into(), label: "Freeform".into() },
+                cx,
+            );
             view.point_transforms[0] = [70., 0.5];
             view.image_adjustments.saturation = 50.;
             view.image_adjustments.vibrance = -30.;

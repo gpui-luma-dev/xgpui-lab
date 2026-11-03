@@ -14,6 +14,7 @@ mod gamut;
 mod color_lab;
 mod color_demos;
 mod media_lab;
+mod photo_viewport;
 mod parley_lab;
 mod svg_lab;
 mod shader;
@@ -111,6 +112,16 @@ fn main() {
             eprintln!("Text diagnostic failed: {error:#}");
             std::process::exit(1);
         }
+        return;
+    }
+    if let Some(output) = benchmarks::argument(&args, "--photo-check") {
+        let output = std::path::PathBuf::from(output);
+        gpui_platform::application().with_assets(Assets).run(move |cx| {
+            if let Err(error) = gpui_luma::init(cx).and_then(|_| photo_viewport::run_check(cx, output)) {
+                eprintln!("Photo check: {error:#}");
+                std::process::exit(1);
+            }
+        });
         return;
     }
     let app = gpui_platform::application().with_assets(Assets);

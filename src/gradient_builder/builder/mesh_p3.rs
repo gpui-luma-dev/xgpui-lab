@@ -3,8 +3,14 @@
 mod metal {
     use anyhow::{Context as _, Result};
     use gpui::{CustomContent, DevicePixels, Size};
-    use gpui_apple::{custom_draw::{MetalCustomContext, MetalCustomOutput, MetalWideSdrOutput}, metal::*};
-    use std::{any::Any, sync::{Arc, Mutex}};
+    use gpui_apple::{
+        custom_draw::{MetalCustomContext, MetalCustomOutput, MetalWideSdrOutput, MetalQueueIdentity},
+        metal::*,
+    };
+    use std::{
+        any::Any,
+        sync::{Arc, Mutex},
+    };
     #[cfg(test)]
     use xgpui_shader::MeshGradient;
 
@@ -22,7 +28,7 @@ kernel void mesh_p3(texture2d<float, access::sample> src [[texture(0)]],
 }
 "#;
     #[derive(Default)]
-    pub struct Pipeline(Mutex<Option<(u64, CommandQueue, ComputePipelineState)>>);
+    pub struct Pipeline(Mutex<Option<(u64, MetalQueueIdentity, ComputePipelineState)>>);
     // Immutable pipelines and retained queue are accessed only under the mutex.
     unsafe impl Send for Pipeline {}
     unsafe impl Sync for Pipeline {}
@@ -49,36 +55,55 @@ kernel void mesh_p3(texture2d<float, access::sample> src [[texture(0)]],
             let ctx = backend.downcast_ref::<MetalCustomContext>().context("P3 preview requires native Metal")?;
             let mut cache = self.cached.lock().map_err(|_| anyhow::anyhow!("P3 mesh cache poisoned"))?;
             if let Some((key, size, output)) = cache.as_ref()
-                && *key == ctx.cache_key() && *size == extent {
+                && *key == ctx.cache_key()
+                && *size == extent
+            {
                 return Ok(Box::new(output.reusable_for(ctx)?));
             }
             let mut pipelines = self.pipeline.0.lock().map_err(|_| anyhow::anyhow!("P3 pipeline cache poisoned"))?;
             if pipelines.as_ref().is_none_or(|(key, _, _)| *key != ctx.cache_key()) {
-                let library = ctx.device.newLibraryWithSource_options_error(
-                    &objc2_foundation::NSString::from_str(SOURCE), Some(&CompileOptions::new())
-                ).map_err(anyhow::Error::msg)?;
-                let function = library.newFunctionWithName(&objc2_foundation::NSString::from_str("mesh_p3"))
+                let library = ctx
+                    .device
+                    .newLibraryWithSource_options_error(
+                        &objc2_foundation::NSString::from_str(SOURCE),
+                        Some(&CompileOptions::new()),
+                    )
+                    .map_err(anyhow::Error::msg)?;
+                let function = library
+                    .newFunctionWithName(&objc2_foundation::NSString::from_str("mesh_p3"))
                     .context("P3 conversion kernel missing")?;
-                let pipeline = ctx.device.newComputePipelineStateWithFunction_error(&function).map_err(anyhow::Error::msg)?;
-                *pipelines = Some((ctx.cache_key(), ctx.queue.clone(), pipeline));
+                let pipeline =
+                    ctx.device.newComputePipelineStateWithFunction_error(&function).map_err(anyhow::Error::msg)?;
+                *pipelines = Some((ctx.cache_key(), ctx.queue_identity(), pipeline));
             }
             let prepared = self.source.prepare(backend, extent)?;
-            let source = prepared.downcast::<MetalCustomOutput>().map_err(|_| anyhow::anyhow!("Unexpected native RGB output"))?;
+            let source = prepared
+                .downcast::<MetalCustomOutput>()
+                .map_err(|_| anyhow::anyhow!("Unexpected native RGB output"))?;
             let descriptor = TextureDescriptor::new();
-            unsafe { descriptor.setWidth(extent.width.0 as usize); descriptor.setHeight(extent.height.0 as usize); }
+            unsafe {
+                descriptor.setWidth(extent.width.0 as usize);
+                descriptor.setHeight(extent.height.0 as usize);
+            }
             descriptor.setPixelFormat(MTLPixelFormat::RGBA16Float);
             descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
             descriptor.setStorageMode(MTLStorageMode::Private);
-            let texture = ctx.device.newTextureWithDescriptor(&descriptor).context("P3 mesh texture allocation failed")?;
-            let command = ctx.queue.commandBuffer().context("P3 mesh command allocation failed")?;
-            let encoder = command.computeCommandEncoder().context("P3 mesh encoder allocation failed")?;
-            encoder.setComputePipelineState(&pipelines.as_ref().unwrap().2);
-            unsafe { encoder.setTexture_atIndex(Some(&source.texture), 0); encoder.setTexture_atIndex(Some(&texture), 1); }
-            encoder.dispatchThreads_threadsPerThreadgroup(
-                MTLSize { width: extent.width.0 as usize, height: extent.height.0 as usize, depth: 1 },
-                MTLSize { width: 8, height: 8, depth: 1 },
-            );
-            encoder.endEncoding();
+            let texture =
+                ctx.device.newTextureWithDescriptor(&descriptor).context("P3 mesh texture allocation failed")?;
+            let command = ctx.record(|command| {
+                let encoder = command.computeCommandEncoder().context("P3 mesh encoder allocation failed")?;
+                encoder.setComputePipelineState(&pipelines.as_ref().unwrap().2);
+                unsafe {
+                    encoder.setTexture_atIndex(Some(&source.texture), 0);
+                    encoder.setTexture_atIndex(Some(&texture), 1);
+                }
+                encoder.dispatchThreads_threadsPerThreadgroup(
+                    MTLSize { width: extent.width.0 as usize, height: extent.height.0 as usize, depth: 1 },
+                    MTLSize { width: 8, height: 8, depth: 1 },
+                );
+                encoder.endEncoding();
+                Ok(())
+            })?;
             let mut commands = source.commands;
             commands.push(command);
             let output = MetalWideSdrOutput::from_linear_p3_premultiplied(ctx, texture, commands)?;
@@ -96,7 +121,7 @@ kernel void mesh_p3(texture2d<float, access::sample> src [[texture(0)]],
             objc2::rc::autoreleasepool(|_| {
                 let device = MTLCreateSystemDefaultDevice().expect("Metal device");
                 let queue = device.newCommandQueue().expect("Metal queue");
-                let ctx = MetalCustomContext { device, queue };
+                let ctx = MetalCustomContext::new(device, queue);
                 let grid = xgpui_shader::MeshGrid::regular(2, 2, vec![[1., 0., 0.]; 4]).unwrap();
                 let paint = Paint::new(Arc::new(MeshGradient::new(grid, 8).unwrap()), Arc::new(Pipeline::default()));
                 let extent = gpui::size(DevicePixels(32), DevicePixels(32));
@@ -108,7 +133,6 @@ kernel void mesh_p3(texture2d<float, access::sample> src [[texture(0)]],
             });
         }
     }
-
 }
 #[cfg(target_os = "macos")]
 pub(super) use metal::{Paint, Pipeline};

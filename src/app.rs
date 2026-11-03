@@ -100,6 +100,7 @@ const SECTIONS: &[Section] = &[
             ("Linear Adjustments", "Linear Adjustments"),
             ("Float / P3", "Float / P3"),
             ("Tiled Canvas", "Tiled Canvas"),
+            ("Photo Viewer", "Photo Viewer"),
             ("Video Frames", "Video Frames"),
             ("Resource Limits", "Resource Limits"),
             ("Benchmarks", "Benchmarks"),
